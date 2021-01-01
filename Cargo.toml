@@ -1,0 +1,23 @@
+[package]
+name = "ultra-tas"
+version = "0.1.0"
+authors = ["MinusKelvin <mark.carlson@minuskelvin.net>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+ppt2 = []
+
+[dependencies]
+pcf = { git = "https://github.com/MinusKelvin/pcf" }
+arrayvec = "0.5"
+rayon = "1.5"
+crossbeam-channel = "0.5.0"
+cfg-if = "1.0.0"
+fumen = "0.1"
+enumset = "1.0"
+
+[profile.release]
+debug = true
+lto = true
