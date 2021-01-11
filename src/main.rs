@@ -5,7 +5,7 @@ use std::io::prelude::*;
 use arrayvec::ArrayVec;
 use enumset::{EnumSet, EnumSetType};
 use fumen::Fumen;
-use pcf::{BitBoard, Piece, PieceSet, Placement, SrsPiece, PIECES};
+use pcf::{BitBoard, Piece, PieceSet, Placement, Rotation, SrsPiece, PIECES};
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "ppt2")] {
@@ -203,12 +203,15 @@ fn advance(cache: &mut Cache, combos: &Combos, state: &PcState, mut f: impl FnMu
             .take(placements.len())
             .for_each(|_| {});
         new_state.pieces += placements.len() as u32;
+        let points = new_state.info.points;
+        new_state
+            .placements
+            .extend(placements.iter().map(|&(p, s)| (p, s + points)));
         new_state.info.points += info.points;
         new_state.info.time += info.time;
         new_state.info.reserve_is_hold = info.reserve_is_hold;
         new_state.info.reserve = info.reserve;
         new_state.info.b2b = info.b2b;
-        new_state.placements.extend_from_slice(placements);
         new_state.inputs.extend_from_slice(inputs);
         f(new_state);
     }
@@ -240,7 +243,10 @@ fn calculate_branches(
                 b2b,
             );
             branches.retain(|(_, _, v)| !v.is_worse_or_equal(&result.2));
-            if !branches.iter().any(|(_, _, v)| result.2.is_worse_or_equal(v)) {
+            if !branches
+                .iter()
+                .any(|(_, _, v)| result.2.is_worse_or_equal(v))
+            {
                 branches.push(result);
             }
         },
@@ -261,8 +267,9 @@ fn calculate_branches(
                 true,
                 false,
                 &std::sync::atomic::AtomicBool::new(false),
+                simple_srs_spins,
                 // pcf::placeability::simple_srs_spins,
-                pcf::placeability::hard_drop_only,
+                // pcf::placeability::hard_drop_only,
                 |pc| {
                     let result = score_pc(
                         pc,
@@ -272,7 +279,10 @@ fn calculate_branches(
                         b2b,
                     );
                     branches.retain(|(_, _, v)| !v.is_worse_or_equal(&result.2));
-                    if !branches.iter().any(|(_, _, v)| result.2.is_worse_or_equal(v)) {
+                    if !branches
+                        .iter()
+                        .any(|(_, _, v)| result.2.is_worse_or_equal(v))
+                    {
                         branches.push(result);
                     }
                 },
@@ -331,7 +341,7 @@ fn score_pc(
         let (manuever, movement_score) = ppt::placement_data(placement, board);
         info.points += movement_score;
         info.time += manuever.len() as u32;
-        inputs.append(&mut {manuever});
+        inputs.append(&mut { manuever });
 
         let cleared_lines = (0..4).filter(|&y| board.line_filled(y)).count();
         board = board.combine(placement.board());
@@ -425,4 +435,98 @@ enum Input {
     Hold,
     SoftDrop,
     HardDrop,
+}
+
+pub fn simple_srs_spins(board: BitBoard, placement: Placement) -> bool {
+    if pcf::placeability::hard_drop_only(board, placement) {
+        return true;
+    }
+
+    let piece = placement.srs_piece(board).into_iter().next().unwrap();
+    let board = board.lines_cleared();
+    let x = placement.x as usize;
+    let y = piece.y as usize;
+
+    let check_empty = |mask: u64| board.0 & mask << 10 * y + x == 0;
+
+    // this is a visible description of all the spins we're detecting:
+    // http://fumen.zui.jp/?v115@pgxhHexhIewhReA8cevEn9gwhIexhlenpfpgQaAewh?GeQaAewhGeRawhGeRaAeA8FeAAceflf+gwhIexhkenpuEBU?9UTASIB5DjB98AQWrrDTG98AXO98AwyjXEroo2AseirDFbE?cEoe0TAyE88AQzgeEFbMwDv3STASorJEvwh1DIhRaAAGeA8?beaquAAIhxhkeyufIhRaGeA8AAAeA8ZeaqfIhxhkeyuf+gR?aHeQ4QaGeAABeAAZealf+gxhIewhkeipf+gRaGeA8AAQaA8?jealf+gxhIewhkeipf/gQaHewhQakeelf/gwhIewhkempfH?hAAAeQaAAFeA8BeA8ZedqfJhwhIewhae1ufIhQaJeQaaetp?fIhwhIewhbeVvfIhQaHeAAQaAeAAZetpfIhwhlelpfIhQaJ?ewhae9pfpgwhAeQaGewhAeQaGewhAeQaGewhAeQaIeQaae9?pfIhwhlelpfIhQaHewhcetpf
+    // the cyan blocks are the areas check_empty calls check, the gray blocks are blocks
+    // that we check to make sure are filled
+    match (piece.piece, piece.rotation) {
+        (Piece::S, Rotation::North) => {
+            (check_empty(0b_0000000011_0000000011_0000000011_0000000011_0000000000_0000000000))
+                || (check_empty(
+                    0b_0000000110_0000000110_0000000110_0000000110_0000000000_0000000000,
+                ) && (placement.x == 7 || board.cell_filled(x + 3, y + 2)))
+        }
+        (Piece::Z, Rotation::North) => {
+            (check_empty(0b_0000000110_0000000110_0000000110_0000000110_0000000000_0000000000))
+                || (check_empty(
+                    0b_0000000011_0000000011_0000000011_0000000011_0000000000_0000000000,
+                ) && (placement.x == 0 || board.cell_filled(x - 1, y + 2)))
+        }
+        (Piece::L, Rotation::North) => {
+            (check_empty(0b_0000000110_0000000110_0000000110_0000000110_0000000000_0000000000)
+                && (board.cell_filled(x + 1, y + 1)
+                    || board.cell_filled(x, y + 1) && (x == 7 || board.cell_filled(x + 3, y + 1))))
+        }
+        (Piece::J, Rotation::North) => {
+            (check_empty(0b_0000000011_0000000011_0000000011_0000000011_0000000000_0000000000)
+                && (board.cell_filled(x + 1, y + 1)
+                    || board.cell_filled(x + 2, y + 1)
+                        && (x == 0 || board.cell_filled(x - 1, y + 1))))
+        }
+        (Piece::L, Rotation::South) => {
+            (check_empty(0b_0000000110_0000000110_0000000110_0000000110_0000000100_0000000000)
+                && (board.cell_filled(x + 1, y + 1)
+                    || board.cell_filled(x, y + 1) && (x == 7 || board.cell_filled(x + 3, y + 1))))
+                || (check_empty(
+                    0b_0000000011_0000000011_0000000011_0000000011_0000000011_0000000000,
+                ) && board.cell_filled(x + 2, y + 1)
+                    && (x == 0 || board.cell_filled(x - 1, y + 1)))
+        }
+        (Piece::J, Rotation::South) => {
+            (check_empty(0b_0000000011_0000000011_0000000011_0000000011_0000000001_0000000000)
+                && (board.cell_filled(x + 1, y + 1)
+                    || board.cell_filled(x + 2, y + 1)
+                        && (x == 0 || board.cell_filled(x - 1, y + 1))))
+                || (check_empty(
+                    0b_0000000110_0000000110_0000000110_0000000110_0000000110_0000000000,
+                ) && board.cell_filled(x, y + 1)
+                    && (x == 7 || board.cell_filled(x + 3, y + 1)))
+        }
+        (Piece::T, Rotation::North) => {
+            (check_empty(0b_0000000110_0000000110_0000000110_0000000110_0000000110_0000000110)
+                && board.cell_filled(x, y + 1)
+                && (x == 7 || board.cell_filled(x + 3, y + 1)))
+                || (check_empty(
+                    0b_0000000011_0000000011_0000000011_0000000011_0000000011_0000000011,
+                ) && board.cell_filled(x + 2, y + 1)
+                    && (x == 0 || board.cell_filled(x - 1, y + 1)))
+        }
+        (Piece::T, Rotation::West) => {
+            (x != 8
+                && check_empty(
+                    0b_0000000110_0000000110_0000000110_0000000110_0000000110_0000000110,
+                ))
+        }
+        (Piece::T, Rotation::East) => {
+            (
+                x != 0
+                    && check_empty(
+                        0b_0000000011_0000000011_0000000011_0000000011_0000000011_0000000011 >> 1,
+                    )
+                    && !board.cell_filled(x - 1, y)
+                // due to jank we need to check that last bit manually
+            )
+        }
+        (Piece::T, Rotation::South) => {
+            (check_empty(0b_0000000011_0000000011_0000000011_0000000011_0000000011_0000000011))
+                || (check_empty(
+                    0b_0000000110_0000000110_0000000110_0000000110_0000000110_0000000110,
+                ))
+        }
+        _ => false,
+    }
 }

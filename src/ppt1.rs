@@ -103,14 +103,105 @@ pub(crate) fn placement_data(placement: Placement, board: BitBoard) -> (Vec<Enum
         manuever.last_mut().unwrap().insert(Input::HardDrop);
         (manuever, distance * 2)
     } else {
-        todo!()
+        let possibilities = placement.srs_piece(board);
+        let board = board.lines_cleared();
+        let mut field = [[false; 10]; 40];
+        for y in 0..6 {
+            for x in 0..10 {
+                field[y][x] = board.cell_filled(x, y);
+            }
+        }
+        let mut board = libtetris::Board::new();
+        board.set_field(field);
+
+        let mut best = None;
+        for &target in &possibilities {
+            let mut target: libtetris::FallingPiece = target.into();
+            for dy in 0..4 {
+                check(target, &board, dy*2, &mut best);
+                if !target.shift(&board, 0, 1) {
+                    break
+                }
+            }
+        }
+
+        if best.is_none() {
+            dbg!(&field[..4], possibilities);
+        }
+
+        best.unwrap()
+    }
+}
+
+fn check(
+    target: libtetris::FallingPiece,
+    board: &libtetris::Board<u16>,
+    extra: u32,
+    best: &mut Option<(Vec<EnumSet<Input>>, u32)>,
+) {
+    let target_rp = target.kind.rotation_points();
+
+    let mut from_state = target.kind;
+    from_state.cw();
+    let rp = from_state.rotation_points();
+    let kicks = rp
+        .iter()
+        .zip(target_rp.iter())
+        .map(|(&(x1, y1), &(x2, y2))| (x1 - x2, y1 - y2));
+    for kick in kicks {
+        let mut from = target;
+        from.kind = from_state;
+        from.x -= kick.0;
+        from.y -= kick.1;
+        let check = from;
+        if !from.shift(&board, 0, 0) {
+            continue;
+        }
+        from.ccw(&board);
+        if from.x == target.x && from.y == target.y && from.kind == target.kind {
+            let (mut manuever, distance) = piece_manuever(check.into());
+            manuever
+                .extend(std::iter::repeat(enum_set!(Input::SoftDrop)).take(distance as usize * 3));
+            manuever.push(enum_set!(Input::RotateLeft | Input::HardDrop));
+            if best.is_none() || matches!(best, Some((ref m, _)) if manuever.len() < m.len()) {
+                *best = Some((manuever, distance + extra))
+            }
+        }
+    }
+
+    let mut from_state = target.kind;
+    from_state.ccw();
+    let rp = from_state.rotation_points();
+    let kicks = rp
+        .iter()
+        .zip(target_rp.iter())
+        .map(|(&(x1, y1), &(x2, y2))| (x1 - x2, y1 - y2));
+    for kick in kicks {
+        let mut from = target;
+        from.kind = from_state;
+        from.x -= kick.0;
+        from.y -= kick.1;
+        let check = from;
+        if !from.shift(&board, 0, 0) {
+            continue;
+        }
+        from.cw(&board);
+        if from.x == target.x && from.y == target.y && from.kind == target.kind {
+            let (mut manuever, distance) = piece_manuever(check.into());
+            manuever
+                .extend(std::iter::repeat(enum_set!(Input::SoftDrop)).take(distance as usize * 3 + 3));
+            manuever.push(enum_set!(Input::RotateRight | Input::HardDrop));
+            if best.is_none() || matches!(best, Some((ref m, _)) if manuever.len() < m.len()) {
+                *best = Some((manuever, distance + extra))
+            }
+        }
     }
 }
 
 fn piece_manuever(target: SrsPiece) -> (Vec<EnumSet<Input>>, u32) {
     let mut drop_distance = 19 - target.y as u32;
 
-    let mut dx = (target.x - 4).abs();
+    let mut dx = target.x - 4;
     if target.piece == Piece::I {
         match target.rotation {
             Rotation::North | Rotation::West => {}
@@ -142,11 +233,7 @@ fn piece_manuever(target: SrsPiece) -> (Vec<EnumSet<Input>>, u32) {
         }
         (movements, drop_distance)
     } else if dr == 2 {
-        let mut movements = vec![
-            enum_set!(rotation),
-            enum_set!(),
-            enum_set!(rotation),
-        ];
+        let mut movements = vec![enum_set!(rotation), enum_set!(), enum_set!(rotation)];
         if dx != 0 {
             movements[1].insert(movement);
         }
