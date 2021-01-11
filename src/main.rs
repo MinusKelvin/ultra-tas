@@ -416,7 +416,7 @@ fn solve_seed(combos: &Combos, seed: u32) -> Vec<PcState> {
     endings
 }
 
-#[derive(EnumSetType)]
+#[derive(EnumSetType, Debug)]
 enum Input {
     Left,
     Right,

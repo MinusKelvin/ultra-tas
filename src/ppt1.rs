@@ -75,323 +75,83 @@ pub const LINE_CLEAR_DELAY_EXTRA: [u32; 5] = [35, 40, 40, 45, 45];
 pub(crate) fn placement_data(placement: Placement, board: BitBoard) -> (Vec<EnumSet<Input>>, u32) {
     if pcf::placeability::hard_drop_only(board, placement) {
         let piece = placement.srs_piece(board)[0];
-        let manuever = match (piece.piece, piece.rotation, piece.x) {
-            (_, Rotation::North, 0) => &[
-                enum_set!(Input::Left),
-                enum_set!(),
-                enum_set!(Input::Left),
-                enum_set!(),
-                enum_set!(Input::Left),
-                enum_set!(),
-                enum_set!(Input::Left),
-                enum_set!(Input::HardDrop),
-            ][..],
-            (_, Rotation::North, 1) => &[
-                enum_set!(Input::Left),
-                enum_set!(),
-                enum_set!(Input::Left),
-                enum_set!(),
-                enum_set!(Input::Left),
-                enum_set!(Input::HardDrop),
-            ],
-            (_, Rotation::North, 2) => &[
-                enum_set!(Input::Left),
-                enum_set!(),
-                enum_set!(Input::Left),
-                enum_set!(Input::HardDrop),
-            ],
-            (_, Rotation::North, 3) => &[enum_set!(Input::Left), enum_set!(Input::HardDrop)],
-            (_, Rotation::North, 4) => &[enum_set!(Input::HardDrop)],
-            (_, Rotation::North, 5) => &[enum_set!(Input::Right), enum_set!(Input::HardDrop)],
-            (_, Rotation::North, 6) => &[
-                enum_set!(Input::Right),
-                enum_set!(),
-                enum_set!(Input::Right),
-                enum_set!(Input::HardDrop),
-            ],
-            (_, Rotation::North, 7) => &[
-                enum_set!(Input::Right),
-                enum_set!(),
-                enum_set!(Input::Right),
-                enum_set!(),
-                enum_set!(Input::Right),
-                enum_set!(Input::HardDrop),
-            ],
-            (_, Rotation::North, 8) => &[
-                enum_set!(Input::Right),
-                enum_set!(),
-                enum_set!(Input::Right),
-                enum_set!(),
-                enum_set!(Input::Right),
-                enum_set!(),
-                enum_set!(Input::Right),
-                enum_set!(Input::HardDrop),
-            ],
-            (_, Rotation::South, 1) => &[
-                enum_set!(Input::Left),
-                enum_set!(Input::RotateLeft),
-                enum_set!(Input::Left),
-                enum_set!(Input::RotateLeft),
-                enum_set!(Input::Left),
-                enum_set!(Input::HardDrop),
-            ],
-            (_, Rotation::South, 2) => &[
-                enum_set!(Input::Left),
-                enum_set!(Input::RotateLeft),
-                enum_set!(Input::Left),
-                enum_set!(Input::RotateLeft | Input::HardDrop),
-            ],
-            (_, Rotation::South, 3) => &[
-                enum_set!(Input::RotateLeft),
-                enum_set!(Input::Left),
-                enum_set!(Input::RotateLeft | Input::HardDrop),
-            ],
-            (_, Rotation::South, 4) => &[
-                enum_set!(Input::RotateLeft),
-                enum_set!(),
-                enum_set!(Input::RotateLeft | Input::HardDrop),
-            ],
-            (_, Rotation::South, 5) => &[
-                enum_set!(Input::RotateRight),
-                enum_set!(Input::Right),
-                enum_set!(Input::RotateRight | Input::HardDrop),
-            ],
-            (_, Rotation::South, 6) => &[
-                enum_set!(Input::Right),
-                enum_set!(Input::RotateRight),
-                enum_set!(Input::Right),
-                enum_set!(Input::RotateRight | Input::HardDrop),
-            ],
-            (_, Rotation::South, 7) => &[
-                enum_set!(Input::Right),
-                enum_set!(Input::RotateRight),
-                enum_set!(Input::Right),
-                enum_set!(Input::RotateRight),
-                enum_set!(Input::Right),
-                enum_set!(Input::HardDrop),
-            ],
-            (_, Rotation::South, 8) => &[
-                enum_set!(Input::Right),
-                enum_set!(Input::RotateRight),
-                enum_set!(Input::Right),
-                enum_set!(Input::RotateRight),
-                enum_set!(Input::Right),
-                enum_set!(),
-                enum_set!(Input::Right),
-                enum_set!(Input::HardDrop),
-            ],
-            (_, Rotation::East, 0) => &[
-                enum_set!(Input::Left),
-                enum_set!(Input::RotateRight),
-                enum_set!(Input::Left),
-                enum_set!(),
-                enum_set!(Input::Left),
-                enum_set!(),
-                enum_set!(Input::Left),
-                enum_set!(Input::HardDrop),
-            ],
-            (_, Rotation::East, 1) => &[
-                enum_set!(Input::Left),
-                enum_set!(Input::RotateRight),
-                enum_set!(Input::Left),
-                enum_set!(),
-                enum_set!(Input::Left),
-                enum_set!(Input::HardDrop),
-            ],
-            (_, Rotation::East, 2) => &[
-                enum_set!(Input::Left),
-                enum_set!(Input::RotateRight),
-                enum_set!(Input::Left),
-                enum_set!(Input::HardDrop),
-            ],
-            (_, Rotation::East, 3) => &[
-                enum_set!(Input::Left),
-                enum_set!(Input::RotateRight | Input::HardDrop),
-            ],
-            (_, Rotation::East, 4) => &[enum_set!(Input::RotateRight | Input::HardDrop)],
-            (_, Rotation::East, 5) => &[
-                enum_set!(Input::Right),
-                enum_set!(Input::RotateRight | Input::HardDrop),
-            ],
-            (_, Rotation::East, 6) => &[
-                enum_set!(Input::Right),
-                enum_set!(Input::RotateRight),
-                enum_set!(Input::Right),
-                enum_set!(Input::HardDrop),
-            ],
-            (_, Rotation::East, 7) => &[
-                enum_set!(Input::Right),
-                enum_set!(Input::RotateRight),
-                enum_set!(Input::Right),
-                enum_set!(),
-                enum_set!(Input::Right),
-                enum_set!(Input::HardDrop),
-            ],
-            (_, Rotation::East, 8) => &[
-                enum_set!(Input::Right),
-                enum_set!(Input::RotateRight),
-                enum_set!(Input::Right),
-                enum_set!(),
-                enum_set!(Input::Right),
-                enum_set!(),
-                enum_set!(Input::Right),
-                enum_set!(Input::HardDrop),
-            ],
-            (Piece::I, Rotation::West, 0) => &[
-                enum_set!(Input::Left),
-                enum_set!(Input::RotateLeft),
-                enum_set!(Input::Left),
-                enum_set!(),
-                enum_set!(Input::Left),
-                enum_set!(),
-                enum_set!(Input::Left),
-                enum_set!(Input::HardDrop),
-            ],
-            (Piece::I, Rotation::West, 1)
-            | (Piece::S, Rotation::West, 1)
-            | (Piece::Z, Rotation::West, 1) => &[
-                enum_set!(Input::Left),
-                enum_set!(Input::RotateLeft),
-                enum_set!(Input::Left),
-                enum_set!(),
-                enum_set!(Input::Left),
-                enum_set!(Input::HardDrop),
-            ],
-            (Piece::I, Rotation::West, 2)
-            | (Piece::S, Rotation::West, 2)
-            | (Piece::Z, Rotation::West, 2) => &[
-                enum_set!(Input::Left),
-                enum_set!(Input::RotateLeft),
-                enum_set!(Input::Left),
-                enum_set!(Input::HardDrop),
-            ],
-            (Piece::I, Rotation::West, 3)
-            | (Piece::S, Rotation::West, 3)
-            | (Piece::Z, Rotation::West,3) => &[
-                enum_set!(Input::Left),
-                enum_set!(Input::RotateLeft | Input::HardDrop),
-            ],
-            (Piece::I, Rotation::West, 4)
-            | (Piece::S, Rotation::West, 4)
-            | (Piece::Z, Rotation::West, 4) => &[enum_set!(Input::RotateLeft | Input::HardDrop)],
-            (Piece::I, Rotation::West, 5)
-            | (Piece::S, Rotation::West, 5)
-            | (Piece::Z, Rotation::West, 5) => &[enum_set!(Input::RotateRight | Input::HardDrop)],
-            (Piece::I, Rotation::West, 6)
-            | (Piece::S, Rotation::West, 6)
-            | (Piece::Z, Rotation::West,6) => &[
-                enum_set!(Input::Right),
-                enum_set!(Input::RotateRight | Input::HardDrop),
-            ],
-            (Piece::I, Rotation::West, 7)
-            | (Piece::S, Rotation::West, 7)
-            | (Piece::Z, Rotation::West, 7) => &[
-                enum_set!(Input::Right),
-                enum_set!(Input::RotateRight),
-                enum_set!(Input::Right),
-                enum_set!(Input::HardDrop),
-            ],
-            (Piece::I, Rotation::West, 8)
-            | (Piece::S, Rotation::West, 8)
-            | (Piece::Z, Rotation::West, 8) => &[
-                enum_set!(Input::Right),
-                enum_set!(Input::RotateRight),
-                enum_set!(Input::Right),
-                enum_set!(),
-                enum_set!(Input::Right),
-                enum_set!(Input::HardDrop),
-            ],
-            (Piece::I, Rotation::West, 9)
-            | (Piece::S, Rotation::West, 9)
-            | (Piece::Z, Rotation::West, 9) => &[
-                enum_set!(Input::Right),
-                enum_set!(Input::RotateRight),
-                enum_set!(Input::Right),
-                enum_set!(),
-                enum_set!(Input::Right),
-                enum_set!(),
-                enum_set!(Input::Right),
-                enum_set!(Input::HardDrop),
-            ],
-            (_, Rotation::West, 1) => &[
-                enum_set!(Input::Left),
-                enum_set!(Input::RotateLeft),
-                enum_set!(Input::Left),
-                enum_set!(),
-                enum_set!(Input::Left),
-                enum_set!(Input::HardDrop),
-            ],
-            (_, Rotation::West, 2) => &[
-                enum_set!(Input::Left),
-                enum_set!(Input::RotateLeft),
-                enum_set!(Input::Left),
-                enum_set!(Input::HardDrop),
-            ],
-            (_, Rotation::West, 3) => &[
-                enum_set!(Input::Left),
-                enum_set!(Input::RotateLeft | Input::HardDrop),
-            ],
-            (_, Rotation::West, 4) => &[
-                enum_set!(Input::RotateLeft | Input::HardDrop),
-            ],
-            (_, Rotation::West, 5) => &[
-                enum_set!(Input::Right),
-                enum_set!(Input::RotateLeft | Input::HardDrop),
-            ],
-            (_, Rotation::West, 6) => &[
-                enum_set!(Input::Right),
-                enum_set!(Input::RotateLeft),
-                enum_set!(Input::Right),
-                enum_set!(Input::HardDrop),
-            ],
-            (_, Rotation::West, 7) => &[
-                enum_set!(Input::Right),
-                enum_set!(Input::RotateLeft),
-                enum_set!(Input::Right),
-                enum_set!(),
-                enum_set!(Input::Right),
-                enum_set!(Input::HardDrop),
-            ],
-            (_, Rotation::West, 8) => &[
-                enum_set!(Input::Right),
-                enum_set!(Input::RotateLeft),
-                enum_set!(Input::Right),
-                enum_set!(),
-                enum_set!(Input::Right),
-                enum_set!(),
-                enum_set!(Input::Right),
-                enum_set!(Input::HardDrop),
-            ],
-            (_, Rotation::West, 9) => &[
-                enum_set!(Input::Right),
-                enum_set!(Input::RotateLeft),
-                enum_set!(Input::Right),
-                enum_set!(),
-                enum_set!(Input::Right),
-                enum_set!(),
-                enum_set!(Input::Right),
-                enum_set!(),
-                enum_set!(Input::Right),
-                enum_set!(Input::HardDrop),
-            ],
-            unmatched => todo!("{:?}", unmatched),
-        };
-        let distance = if piece.rotation == Rotation::North {
-            19 - piece.y as u32
-        } else if piece.piece == Piece::I {
-            18 - piece.y as u32
+        // ISZ pieces are hard dropped to the right fastest by using the east rotation instead of
+        // the west rotation (which we consider canonical for lock location). We convert the target
+        // piece location to the east variant for these cases.
+        let piece = if piece.rotation == Rotation::West
+            && matches!(piece.piece, Piece::I | Piece::S | Piece::Z)
+            && piece.x >= 5
+        {
+            SrsPiece {
+                rotation: Rotation::East,
+                x: if piece.piece != Piece::I {
+                    piece.x - 1
+                } else {
+                    piece.x
+                },
+                y: if piece.piece == Piece::I {
+                    piece.y + 1
+                } else {
+                    piece.y
+                },
+                ..piece
+            }
         } else {
-            19 - piece.y as u32
+            piece
         };
-        (manuever.to_vec(), distance * 2)
+        let (mut manuever, distance) = piece_manuever(piece);
+        manuever.last_mut().unwrap().insert(Input::HardDrop);
+        (manuever, distance * 2)
     } else {
         todo!()
     }
 }
 
-pub fn spin_tuck_data(placement: Placement, board: BitBoard) -> (u32, u32) {
-    // let mut
-    // let piece = placement.srs_piece(board)[0];
-    // let cleared_board = board.lines_cleared();
-    todo!()
+fn piece_manuever(target: SrsPiece) -> (Vec<EnumSet<Input>>, u32) {
+    let mut drop_distance = 19 - target.y as u32;
+
+    let mut dx = (target.x - 4).abs();
+    if target.piece == Piece::I {
+        match target.rotation {
+            Rotation::North | Rotation::West => {}
+            Rotation::East | Rotation::South => dx -= 1,
+        }
+        if matches!(target.rotation, Rotation::West | Rotation::South) {
+            drop_distance -= 1;
+        }
+    }
+    let dr = match target.rotation {
+        Rotation::West => -1i32,
+        Rotation::North => 0,
+        Rotation::East => 1,
+        Rotation::South => 2,
+    };
+    let movement = if dx < 0 { Input::Left } else { Input::Right };
+    let rotation = if dr < 0 {
+        Input::RotateLeft
+    } else {
+        Input::RotateRight
+    };
+    if dx.abs() >= dr.abs() {
+        let mut movements = [enum_set!(movement), enum_set!()].repeat(dx.abs() as usize);
+        if movements.is_empty() {
+            movements.push(enum_set!());
+        }
+        for i in 0..dr.abs() as usize {
+            movements[2 * i + 1].insert(rotation);
+        }
+        (movements, drop_distance)
+    } else if dr == 2 {
+        let mut movements = vec![
+            enum_set!(rotation),
+            enum_set!(),
+            enum_set!(rotation),
+        ];
+        if dx != 0 {
+            movements[1].insert(movement);
+        }
+        (movements, drop_distance)
+    } else {
+        (vec![enum_set!(rotation)], drop_distance)
+    }
 }
