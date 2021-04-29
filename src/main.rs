@@ -70,33 +70,36 @@ fn main() {
             t.elapsed(),
             set.len()
         );
-
-        if set.len() != 1 {
-            return;
+        for soln in &set {
+            println!("  {}pts in {} frames", soln.info.points, soln.info.time);
         }
 
-        let soln = set.into_iter().next().unwrap();
-        let mut f = std::io::BufWriter::new(
-            std::fs::File::create(&format!("solutions/{:06}-{:04X}", soln.info.points, seed))
+        for soln in set {
+            let mut f = std::io::BufWriter::new(
+                std::fs::File::create(&format!(
+                    "solutions/{:6}-{}-{:04X}",
+                    soln.info.points, ppt::ULTRA_LENGTH - soln.info.time, seed
+                ))
                 .unwrap(),
-        );
-        writeln!(f, "{:X}", seed).unwrap();
-        for &inputs in &soln.inputs[2..] {
-            if inputs.is_empty() {
-                write!(f, "_").unwrap();
-            }
-            for input in inputs {
-                match input {
-                    Input::Left => write!(f, "<").unwrap(),
-                    Input::Right => write!(f, ">").unwrap(),
-                    Input::RotateLeft => write!(f, "L").unwrap(),
-                    Input::RotateRight => write!(f, "R").unwrap(),
-                    Input::Hold => write!(f, "H").unwrap(),
-                    Input::SoftDrop => write!(f, "v").unwrap(),
-                    Input::HardDrop => write!(f, "D").unwrap(),
+            );
+            writeln!(f, "{:X}", seed).unwrap();
+            for &inputs in &soln.inputs[2..] {
+                if inputs.is_empty() {
+                    write!(f, "_").unwrap();
                 }
+                for input in inputs {
+                    match input {
+                        Input::Left => write!(f, "<").unwrap(),
+                        Input::Right => write!(f, ">").unwrap(),
+                        Input::RotateLeft => write!(f, "L").unwrap(),
+                        Input::RotateRight => write!(f, "R").unwrap(),
+                        Input::Hold => write!(f, "H").unwrap(),
+                        Input::SoftDrop => write!(f, "v").unwrap(),
+                        Input::HardDrop => write!(f, "D").unwrap(),
+                    }
+                }
+                writeln!(f).unwrap();
             }
-            writeln!(f).unwrap();
         }
     });
 }
