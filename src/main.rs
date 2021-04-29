@@ -4,8 +4,8 @@ use std::io::prelude::*;
 
 use arrayvec::ArrayVec;
 use enumset::{EnumSet, EnumSetType};
-use fumen::Fumen;
 use pcf::{BitBoard, Piece, PieceSet, Placement, Rotation, SrsPiece, PIECES};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "ppt2")] {
@@ -20,83 +20,85 @@ cfg_if::cfg_if! {
 fn main() {
     let all_pieces = pcf::PIECES.repeat(4).into_iter().collect();
 
-    let (s, recv) = crossbeam_channel::bounded(256);
+    let combos = std::sync::Mutex::new(Combos::new());
 
     let start = std::time::Instant::now();
-    std::thread::spawn(move || {
-        pcf::find_combinations_mt(all_pieces, BitBoard(0), &Default::default(), 4, |combo| {
-            let mut a = ArrayVec::<[_; 10]>::new();
-            a.try_extend_from_slice(combo).unwrap();
-            s.send(a.into_inner().unwrap()).unwrap();
-        });
+    let cmbs = &combos;
+    pcf::find_combinations_mt(all_pieces, BitBoard(0), &Default::default(), 4, |combo| {
+        let mut a = ArrayVec::<[_; 10]>::new();
+        a.try_extend_from_slice(combo).unwrap();
+        let combo = a.into_inner().unwrap();
+        let set = combo.iter().map(|p| p.kind.piece()).collect();
+        cmbs.lock().unwrap().entry(set).or_default().push(combo);
     });
 
-    let mut combos = Combos::new();
-    let mut combo_count = 0;
-    for combo in recv {
-        let set = combo.iter().map(|p| p.kind.piece()).collect();
-        combos.entry(set).or_default().push(combo);
-        combo_count += 1;
-    }
-    println!("Found {} combos in {:?}", combo_count, start.elapsed());
+    let combos = combos.into_inner().unwrap();
+    println!(
+        "Found {} combos in {:?}",
+        combos.values().map(|v| v.len()).sum::<usize>(),
+        start.elapsed()
+    );
 
-    let seed = 0x52F6;
+    std::fs::create_dir_all("solutions").unwrap();
 
-    let t = std::time::Instant::now();
-    let mut set = solve_seed(&combos, seed);
-    println!("{:?}", t.elapsed());
-    println!("{}", set.len());
-    set.sort_by_key(|v| v.info.time);
-    for ending in &set {
-        println!("{:?}", ending.info);
-    }
-    let best_score = set.iter().map(|s| s.info.points).max().unwrap();
-    let best = set.iter().find(|s| s.info.points == best_score).unwrap();
-    let mut fumen = Fumen::default();
-    for &(srs, score) in &best.placements {
-        let page = fumen.add_page();
-        page.piece = Some(fumen::Piece {
-            kind: match srs.piece {
-                Piece::I => fumen::PieceType::I,
-                Piece::O => fumen::PieceType::O,
-                Piece::T => fumen::PieceType::T,
-                Piece::L => fumen::PieceType::L,
-                Piece::J => fumen::PieceType::J,
-                Piece::S => fumen::PieceType::S,
-                Piece::Z => fumen::PieceType::Z,
-            },
-            rotation: match srs.rotation {
-                pcf::Rotation::North => fumen::RotationState::North,
-                pcf::Rotation::South => fumen::RotationState::South,
-                pcf::Rotation::East => fumen::RotationState::East,
-                pcf::Rotation::West => fumen::RotationState::West,
-            },
-            x: srs.x as u32,
-            y: srs.y as u32,
-        });
-        page.comment = Some(score.to_string());
-    }
-    println!("{}", fumen.encode());
-
-    let mut f = std::fs::File::create("tas").unwrap();
-    writeln!(f, "{:X}", seed).unwrap();
-    for &inputs in &best.inputs {
-        if inputs.is_empty() {
-            write!(f, "_").unwrap();
+    let mut to_do = vec![true; 65536];
+    for entry in std::fs::read_dir("solutions").unwrap() {
+        let entry = entry.unwrap();
+        let name = entry.file_name();
+        let name = name.to_str().unwrap();
+        let seed = name
+            .rsplit('-')
+            .next()
+            .and_then(|v| usize::from_str_radix(v, 16).ok());
+        if let Some(seed) = seed {
+            to_do[seed] = false;
         }
-        for input in inputs {
-            match input {
-                Input::Left => write!(f, "<").unwrap(),
-                Input::Right => write!(f, ">").unwrap(),
-                Input::RotateLeft => write!(f, "L").unwrap(),
-                Input::RotateRight => write!(f, "R").unwrap(),
-                Input::Hold => write!(f, "H").unwrap(),
-                Input::SoftDrop => write!(f, "v").unwrap(),
-                Input::HardDrop => write!(f, "D").unwrap(),
+    }
+
+    let to_do: Vec<_> = to_do
+        .into_iter()
+        .enumerate()
+        .filter_map(|(seed, ntbd)| ntbd.then(|| seed as u32))
+        .collect();
+
+    to_do.into_par_iter().for_each(|seed| {
+        let t = std::time::Instant::now();
+        let set = solve_seed(&combos, seed);
+        println!(
+            "{:04X} solved in {:?} with {} solutions",
+            seed,
+            t.elapsed(),
+            set.len()
+        );
+
+        if set.len() != 1 {
+            return;
+        }
+
+        let soln = set.into_iter().next().unwrap();
+        let mut f = std::io::BufWriter::new(
+            std::fs::File::create(&format!("solutions/{:06}-{:04X}", soln.info.points, seed))
+                .unwrap(),
+        );
+        writeln!(f, "{:X}", seed).unwrap();
+        for &inputs in &soln.inputs[2..] {
+            if inputs.is_empty() {
+                write!(f, "_").unwrap();
             }
+            for input in inputs {
+                match input {
+                    Input::Left => write!(f, "<").unwrap(),
+                    Input::Right => write!(f, ">").unwrap(),
+                    Input::RotateLeft => write!(f, "L").unwrap(),
+                    Input::RotateRight => write!(f, "R").unwrap(),
+                    Input::Hold => write!(f, "H").unwrap(),
+                    Input::SoftDrop => write!(f, "v").unwrap(),
+                    Input::HardDrop => write!(f, "D").unwrap(),
+                }
+            }
+            writeln!(f).unwrap();
         }
-        writeln!(f).unwrap();
-    }
+    });
 }
 
 type Combos = HashMap<PieceSet, Vec<[Placement; 10]>>;
@@ -165,10 +167,61 @@ impl PcState {
     }
 }
 
-type Cache = HashMap<
-    ([Piece; 11], bool),
-    Vec<(Vec<EnumSet<Input>>, ArrayVec<[(SrsPiece, u32); 10]>, PcInfo)>,
->;
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct SolveState {
+    queue: [Piece; 11],
+    b2b: bool,
+}
+
+#[derive(Clone)]
+struct SolutionInfo {
+    inputs: Vec<EnumSet<Input>>,
+    placements: ArrayVec<[(SrsPiece, u32); 10]>,
+    info: PcInfo,
+}
+
+#[derive(Default)]
+struct Cache {
+    // old_values: HashSet<SolveState>,
+    cached: HashMap<SolveState, Vec<SolutionInfo>>,
+}
+
+impl Cache {
+    fn get(
+        &mut self,
+        combos: &Combos,
+        queue: [Piece; 11],
+        info: &PcInfo,
+    ) -> Cow<Vec<SolutionInfo>> {
+        if !info.reserve_is_hold {
+            // Don't bother caching early game PCs
+            Cow::Owned(calculate_branches(
+                combos,
+                queue,
+                info.reserve,
+                info.reserve_is_hold,
+                info.b2b,
+            ))
+        } else {
+            Cow::Borrowed(
+                self.cached
+                    .entry(SolveState {
+                        queue,
+                        b2b: info.b2b,
+                    })
+                    .or_insert_with(|| {
+                        calculate_branches(
+                            combos,
+                            queue,
+                            info.reserve,
+                            info.reserve_is_hold,
+                            info.b2b,
+                        )
+                    }),
+            )
+        }
+    }
+}
 
 fn advance(cache: &mut Cache, combos: &Combos, state: &PcState, mut f: impl FnMut(PcState)) {
     let mut queue = ArrayVec::<[_; 11]>::new();
@@ -176,43 +229,24 @@ fn advance(cache: &mut Cache, combos: &Combos, state: &PcState, mut f: impl FnMu
     queue.extend(state.generator.clone());
     let queue = queue.into_inner().unwrap();
 
-    let solutions: Cow<_>;
-    if !state.info.reserve_is_hold {
-        solutions = Cow::Owned(calculate_branches(
-            combos,
-            queue,
-            state.info.reserve,
-            state.info.reserve_is_hold,
-            state.info.b2b,
-        ));
-    } else {
-        solutions = Cow::Borrowed(cache.entry((queue, state.info.b2b)).or_insert_with(|| {
-            calculate_branches(
-                combos,
-                queue,
-                state.info.reserve,
-                state.info.reserve_is_hold,
-                state.info.b2b,
-            )
-        }));
-    }
+    let solutions = cache.get(combos, queue, &state.info);
 
-    for (inputs, placements, info) in &*solutions {
+    for soln_info in &*solutions {
         let mut new_state = state.clone();
         (&mut new_state.generator)
-            .take(placements.len())
+            .take(soln_info.placements.len())
             .for_each(|_| {});
-        new_state.pieces += placements.len() as u32;
+        new_state.pieces += soln_info.placements.len() as u32;
         let points = new_state.info.points;
         new_state
             .placements
-            .extend(placements.iter().map(|&(p, s)| (p, s + points)));
-        new_state.info.points += info.points;
-        new_state.info.time += info.time;
-        new_state.info.reserve_is_hold = info.reserve_is_hold;
-        new_state.info.reserve = info.reserve;
-        new_state.info.b2b = info.b2b;
-        new_state.inputs.extend_from_slice(inputs);
+            .extend(soln_info.placements.iter().map(|&(p, s)| (p, s + points)));
+        new_state.info.points += soln_info.info.points;
+        new_state.info.time += soln_info.info.time;
+        new_state.info.reserve_is_hold = soln_info.info.reserve_is_hold;
+        new_state.info.reserve = soln_info.info.reserve;
+        new_state.info.b2b = soln_info.info.b2b;
+        new_state.inputs.extend_from_slice(&soln_info.inputs);
         f(new_state);
     }
 }
@@ -223,8 +257,8 @@ fn calculate_branches(
     reserve: Piece,
     reserve_is_hold: bool,
     b2b: bool,
-) -> Vec<(Vec<EnumSet<Input>>, ArrayVec<[(SrsPiece, u32); 10]>, PcInfo)> {
-    let mut branches: Vec<(_, _, PcInfo)> = vec![];
+) -> Vec<SolutionInfo> {
+    let mut branches: Vec<SolutionInfo> = vec![];
 
     pcf::solve_pc(
         &queue[..6],
@@ -242,10 +276,10 @@ fn calculate_branches(
                 reserve_is_hold,
                 b2b,
             );
-            branches.retain(|(_, _, v)| !v.is_worse_or_equal(&result.2));
+            branches.retain(|soln| !soln.info.is_worse_or_equal(&result.info));
             if !branches
                 .iter()
-                .any(|(_, _, v)| result.2.is_worse_or_equal(v))
+                .any(|soln| result.info.is_worse_or_equal(&soln.info))
             {
                 branches.push(result);
             }
@@ -278,10 +312,10 @@ fn calculate_branches(
                         reserve_is_hold,
                         b2b,
                     );
-                    branches.retain(|(_, _, v)| !v.is_worse_or_equal(&result.2));
+                    branches.retain(|soln| !soln.info.is_worse_or_equal(&result.info));
                     if !branches
                         .iter()
-                        .any(|(_, _, v)| result.2.is_worse_or_equal(v))
+                        .any(|soln| result.info.is_worse_or_equal(&soln.info))
                     {
                         branches.push(result);
                     }
@@ -299,7 +333,7 @@ fn score_pc(
     reserve: Piece,
     reserve_is_hold: bool,
     b2b: bool,
-) -> (Vec<EnumSet<Input>>, ArrayVec<[(SrsPiece, u32); 10]>, PcInfo) {
+) -> SolutionInfo {
     let pc_lines = pc.len() / 5 * 2;
     let mut board = BitBoard(0);
     let mut combo = 0;
@@ -379,18 +413,21 @@ fn score_pc(
         placements.push((srs, info.points));
     }
 
-    (inputs, placements, info)
+    SolutionInfo {
+        inputs,
+        placements,
+        info,
+    }
 }
 
 fn solve_seed(combos: &Combos, seed: u32) -> Vec<PcState> {
-    let mut solutions_cache = HashMap::new();
+    let mut solutions_cache = Cache::default();
     let mut next = (vec![PcState::new(seed)], vec![]);
     let mut endings = vec![];
     while !next.0.is_empty() || !next.1.is_empty() {
         let group = next.0;
         next.0 = next.1;
         next.1 = vec![];
-        println!("{}", group.len());
         for state in group {
             let pieces = state.pieces;
             let mut ended = true;
@@ -453,6 +490,7 @@ pub fn simple_srs_spins(board: BitBoard, placement: Placement) -> bool {
     // http://fumen.zui.jp/?v115@pgxhHexhIewhReA8cevEn9gwhIexhlenpfpgQaAewh?GeQaAewhGeRawhGeRaAeA8FeAAceflf+gwhIexhkenpuEBU?9UTASIB5DjB98AQWrrDTG98AXO98AwyjXEroo2AseirDFbE?cEoe0TAyE88AQzgeEFbMwDv3STASorJEvwh1DIhRaAAGeA8?beaquAAIhxhkeyufIhRaGeA8AAAeA8ZeaqfIhxhkeyuf+gR?aHeQ4QaGeAABeAAZealf+gxhIewhkeipf+gRaGeA8AAQaA8?jealf+gxhIewhkeipf/gQaHewhQakeelf/gwhIewhkempfH?hAAAeQaAAFeA8BeA8ZedqfJhwhIewhae1ufIhQaJeQaaetp?fIhwhIewhbeVvfIhQaHeAAQaAeAAZetpfIhwhlelpfIhQaJ?ewhae9pfpgwhAeQaGewhAeQaGewhAeQaGewhAeQaIeQaae9?pfIhwhlelpfIhQaHewhcetpf
     // the cyan blocks are the areas check_empty calls check, the gray blocks are blocks
     // that we check to make sure are filled
+    #[allow(unused_parens)]
     match (piece.piece, piece.rotation) {
         (Piece::S, Rotation::North) => {
             (check_empty(0b_0000000011_0000000011_0000000011_0000000011_0000000000_0000000000))

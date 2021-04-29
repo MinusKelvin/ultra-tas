@@ -10,19 +10,14 @@ edition = "2018"
 ppt2 = []
 
 [dependencies]
-pcf = { git = "https://github.com/MinusKelvin/pcf", rev = "96b0de1" }
+pcf = { git = "https://github.com/MinusKelvin/pcf", rev = "64cd955" }
 libtetris = { git = "https://github.com/MinusKelvin/cold-clear", features = ["pcf"] }
 arrayvec = "0.5"
 rayon = "1.5"
 crossbeam-channel = "0.5.0"
 cfg-if = "1.0.0"
-fumen = "0.1"
 enumset = "1.0"
 
 [profile.release]
 debug = true
 lto = true
-
-[patch.crates-io.enumset_derive]
-git = "https://github.com/ocboogie/enumset"
-branch = "span-fix"
