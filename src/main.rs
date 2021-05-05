@@ -7,15 +7,7 @@ use enumset::{EnumSet, EnumSetType};
 use pcf::{BitBoard, Piece, PieceSet, Placement, Rotation, SrsPiece, PIECES};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "ppt2")] {
-        mod ppt2;
-        use ppt2 as ppt;
-    } else {
-        mod ppt1;
-        use ppt1 as ppt;
-    }
-}
+mod data;
 
 fn main() {
     let all_pieces = pcf::PIECES.repeat(4).into_iter().collect();
@@ -78,7 +70,7 @@ fn main() {
             let mut f = std::io::BufWriter::new(
                 std::fs::File::create(&format!(
                     "solutions/{:6}-{}-{:04X}",
-                    soln.info.points, ppt::ULTRA_LENGTH - soln.info.time, seed
+                    soln.info.points, data::ULTRA_LENGTH - soln.info.time, seed
                 ))
                 .unwrap(),
             );
@@ -110,7 +102,7 @@ type Combos = HashMap<PieceSet, Vec<[Placement; 10]>>;
 struct PcState {
     placements: Vec<(SrsPiece, u32)>,
     inputs: Vec<EnumSet<Input>>,
-    generator: ppt::PieceGenerator,
+    generator: data::PieceGenerator,
     pieces: u32,
     info: PcInfo,
 }
@@ -142,9 +134,9 @@ impl PcInfo {
     }
 
     fn final_is_worse_or_equal(&self, other: &Self) -> bool {
-        let leftover_time = ppt::ULTRA_LENGTH - self.time;
-        let extra_pieces = leftover_time / (ppt::PIECE_SPAWN_TIME + 1);
-        let leftover_leftover_time = leftover_time - extra_pieces * (ppt::PIECE_SPAWN_TIME + 1);
+        let leftover_time = data::ULTRA_LENGTH - self.time;
+        let extra_pieces = leftover_time / (data::PIECE_SPAWN_TIME + 1);
+        let leftover_leftover_time = leftover_time - extra_pieces * (data::PIECE_SPAWN_TIME + 1);
         let extra_points = extra_pieces * 38 + leftover_leftover_time * 2;
         self.points + extra_points <= other.points
     }
@@ -152,7 +144,7 @@ impl PcInfo {
 
 impl PcState {
     fn new(seed: u32) -> Self {
-        let mut generator = ppt::PieceGenerator::new(seed);
+        let mut generator = data::PieceGenerator::new(seed);
         let reserve = generator.next().unwrap();
         PcState {
             placements: vec![],
@@ -352,8 +344,8 @@ fn score_pc(
     for &placement in pc {
         let srs = placement.srs_piece(board)[0];
 
-        info.time += ppt::PIECE_SPAWN_TIME;
-        inputs.extend_from_slice(&[EnumSet::empty(); ppt::PIECE_SPAWN_TIME as usize]);
+        info.time += data::PIECE_SPAWN_TIME;
+        inputs.extend_from_slice(&[EnumSet::empty(); data::PIECE_SPAWN_TIME as usize]);
 
         let next = queue.next().unwrap();
         if info.reserve_is_hold {
@@ -369,13 +361,13 @@ fn score_pc(
             } else {
                 assert!(placement.kind.piece() == next);
                 info.reserve_is_hold = true;
-                info.time += ppt::FIRST_HOLD_TIME + 1;
+                info.time += data::FIRST_HOLD_TIME + 1;
                 inputs.push(EnumSet::only(Input::Hold));
-                inputs.extend_from_slice(&[EnumSet::empty(); ppt::FIRST_HOLD_TIME as usize]);
+                inputs.extend_from_slice(&[EnumSet::empty(); data::FIRST_HOLD_TIME as usize]);
             }
         }
 
-        let (manuever, movement_score) = ppt::placement_data(placement, board);
+        let (manuever, movement_score) = data::placement_data(placement, board);
         info.points += movement_score;
         info.time += manuever.len() as u32;
         inputs.append(&mut { manuever });
@@ -386,8 +378,8 @@ fn score_pc(
         let cleared_lines = total_cleared_lines - cleared_lines;
 
         if cleared_lines != 0 {
-            info.time += ppt::LINE_CLEAR_DELAY;
-            inputs.extend_from_slice(&[EnumSet::empty(); ppt::LINE_CLEAR_DELAY as usize]);
+            info.time += data::LINE_CLEAR_DELAY;
+            inputs.extend_from_slice(&[EnumSet::empty(); data::LINE_CLEAR_DELAY as usize]);
             info.points += combo * 50;
 
             let i = if cleared_lines == 4 {
@@ -396,13 +388,13 @@ fn score_pc(
                 cleared_lines
             } - 1;
 
-            info.points += ppt::LINE_CLEAR_POINTS[i];
+            info.points += data::LINE_CLEAR_POINTS[i];
 
             if total_cleared_lines == pc_lines {
-                info.points += ppt::LINE_CLEAR_PC_POINTS[i];
+                info.points += data::LINE_CLEAR_PC_POINTS[i];
             } else {
-                info.time += ppt::LINE_CLEAR_DELAY_EXTRA[i];
-                for _ in 0..ppt::LINE_CLEAR_DELAY_EXTRA[i] {
+                info.time += data::LINE_CLEAR_DELAY_EXTRA[i];
+                for _ in 0..data::LINE_CLEAR_DELAY_EXTRA[i] {
                     inputs.push(EnumSet::empty());
                 }
             }
@@ -435,7 +427,7 @@ fn solve_seed(combos: &Combos, seed: u32) -> Vec<PcState> {
             let pieces = state.pieces;
             let mut ended = true;
             advance(&mut solutions_cache, combos, &state, |new_state| {
-                if new_state.info.time > ppt::ULTRA_LENGTH {
+                if new_state.info.time > data::ULTRA_LENGTH {
                     return;
                 }
                 ended = false;

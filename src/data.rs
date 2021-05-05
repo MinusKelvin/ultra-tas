@@ -1,71 +1,85 @@
 use arrayvec::ArrayVec;
+use cfg_if::cfg_if;
 use enumset::{enum_set, EnumSet};
 use pcf::{BitBoard, Piece, Placement, Rotation, SrsPiece};
 
 use crate::Input;
 
-#[derive(Clone)]
-pub struct PieceGenerator {
-    rng: u32,
-    current_bag: ArrayVec<[Piece; 7]>,
-}
+cfg_if! {
+    if #[cfg(feature = "ppt2")] {
 
-impl PieceGenerator {
-    pub fn new(seed: u32) -> Self {
-        let mut this = PieceGenerator {
-            rng: seed,
-            current_bag: ArrayVec::new(),
-        };
-        for _ in 0..1973 {
-            this.rng();
-        }
-        this
-    }
-
-    fn rng(&mut self) -> u32 {
-        self.rng = self.rng.wrapping_mul(0x5D588B65).wrapping_add(0x269EC3);
-        self.rng
-    }
-}
-
-impl Iterator for PieceGenerator {
-    type Item = Piece;
-    fn next(&mut self) -> Option<Piece> {
-        if let Some(piece) = self.current_bag.pop() {
-            return Some(piece);
+    } else {
+        #[derive(Clone)]
+        pub struct PieceGenerator {
+            rng: u32,
+            current_bag: ArrayVec<[Piece; 7]>,
         }
 
-        let mut bag = [
-            Piece::S,
-            Piece::Z,
-            Piece::J,
-            Piece::L,
-            Piece::T,
-            Piece::O,
-            Piece::I,
-        ];
+        impl PieceGenerator {
+            pub fn new(seed: u32) -> Self {
+                let mut this = PieceGenerator {
+                    rng: seed,
+                    current_bag: ArrayVec::new(),
+                };
+                for _ in 0..1973 {
+                    this.rng();
+                }
+                this
+            }
 
-        for i in 0..7 {
-            let new_index = (((self.rng() >> 16) * (7 - i)) >> 16) + i;
-            bag.swap(i as usize, new_index as usize);
+            fn rng(&mut self) -> u32 {
+                self.rng = self.rng.wrapping_mul(0x5D588B65).wrapping_add(0x269EC3);
+                self.rng
+            }
         }
 
-        bag.reverse();
-        self.current_bag = ArrayVec::from(bag);
+        impl Iterator for PieceGenerator {
+            type Item = Piece;
+            fn next(&mut self) -> Option<Piece> {
+                if let Some(piece) = self.current_bag.pop() {
+                    return Some(piece);
+                }
 
-        self.current_bag.pop()
-    }
-}
+                let mut bag = [
+                    Piece::S,
+                    Piece::Z,
+                    Piece::J,
+                    Piece::L,
+                    Piece::T,
+                    Piece::O,
+                    Piece::I,
+                ];
 
-impl std::fmt::Debug for PieceGenerator {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ppt1::PieceGenerator").finish()
+                for i in 0..7 {
+                    let new_index = (((self.rng() >> 16) * (7 - i)) >> 16) + i;
+                    bag.swap(i as usize, new_index as usize);
+                }
+
+                bag.reverse();
+                self.current_bag = ArrayVec::from(bag);
+
+                self.current_bag.pop()
+            }
+        }
+
+        impl std::fmt::Debug for PieceGenerator {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.debug_struct("ppt1::PieceGenerator").finish()
+            }
+        }
     }
 }
 
 pub const ULTRA_LENGTH: u32 = 3 * 60 * 60 + 3;
-pub const FIRST_HOLD_TIME: u32 = 7;
-pub const PIECE_SPAWN_TIME: u32 = 7;
+cfg_if! {
+    if #[cfg(feature = "ppt2")] {
+        pub const FIRST_HOLD_TIME: u32 = 8;
+        pub const PIECE_SPAWN_TIME: u32 = 8;
+    } else {
+        pub const FIRST_HOLD_TIME: u32 = 7;
+        pub const PIECE_SPAWN_TIME: u32 = 7;
+    }
+}
 pub const LINE_CLEAR_DELAY: u32 = 1;
 
 pub const LINE_CLEAR_POINTS: [u32; 5] = [100, 300, 500, 800, 1200];
