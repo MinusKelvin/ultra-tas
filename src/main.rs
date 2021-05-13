@@ -118,6 +118,9 @@ struct PcInfo {
 
 impl PcInfo {
     fn is_worse_or_equal(&self, other: &Self) -> bool {
+        if self.b2b != other.b2b {
+            return false;
+        }
         if self.reserve_is_hold != other.reserve_is_hold || self.reserve != other.reserve {
             return false;
         }
