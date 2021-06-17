@@ -438,7 +438,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tsd-tet-pc-db-gen"
+name = "ultra-tas"
 version = "0.1.0"
 dependencies = [
  "arrayvec",
