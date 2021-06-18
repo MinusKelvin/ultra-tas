@@ -220,10 +220,9 @@ fn build_db() {
             index_len = 0;
             current_partial = partial;
             let new_index = idx(&partial);
-            if (index as f64 / 7.0f64.powi(7) * 1000.0).floor()
-                != (new_index as f64 / 7.0f64.powi(7) * 1000.0).floor()
-            {
-                println!("{:.1}%", new_index as f64 / 7.0f64.powi(7) * 100.0);
+            let one_permilli = 7usize.pow(7) / 1000;
+            if index / one_permilli != new_index / one_permilli {
+                println!("{:.1}%", new_index as f64 / one_permilli as f64 * 10.0);
             }
         }
 
@@ -237,7 +236,7 @@ fn build_db() {
             .unwrap();
 
         for pc in pcs {
-            for &mv in &pc {
+            for mv in pc {
                 data.write_all(&[packed_placement(mv)]).unwrap();
                 data_offset += 1;
             }

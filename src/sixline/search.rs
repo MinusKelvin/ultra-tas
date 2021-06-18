@@ -9,7 +9,7 @@ use crate::{ArrayExt, data::*};
 
 #[inline(always)]
 fn search_impl(bag_states: &[BagState], b: &Board, mut option: impl FnMut(&[BagState], Placement)) {
-    for &piece in &Piece::ALL {
+    for piece in Piece::ALL {
         let bags: Vec<_> = bag_states.iter().filter_map(|&b| b.remove(piece)).collect();
         if !bags.is_empty() {
             for &rotation in piece.relevant_rotations() {
@@ -38,7 +38,7 @@ fn search_pc(
 ) {
     search_impl(bags, board, |bags, placement| {
         let mut board = *board;
-        for &cell in &placement.cells() {
+        for cell in placement.cells() {
             if cell.1 >= 4 {
                 return;
             }
@@ -71,7 +71,7 @@ fn search_tsd(
 ) {
     search_impl(bags, board, |bags, placement| {
         let mut new_board = *board;
-        for &cell in &placement.cells() {
+        for cell in placement.cells() {
             if cell.1 >= 6 {
                 return;
             }
@@ -89,7 +89,7 @@ fn search_tsd(
             };
 
             let mut new_board = *board;
-            for &cell in &placement.cells() {
+            for cell in placement.cells() {
                 new_board.fill(cell);
             }
 
