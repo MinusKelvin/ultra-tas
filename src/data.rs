@@ -1,4 +1,3 @@
-
 use std::ops::Range;
 
 use enumset::{EnumSet, EnumSetType};
@@ -17,7 +16,7 @@ pub enum Piece {
     Z,
 }
 
-#[derive(Clone, Copy, Debug, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Rotation {
     North,
     East,
@@ -25,7 +24,7 @@ pub enum Rotation {
     West,
 }
 
-#[derive(Copy, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Placement {
     pub piece: Piece,
     pub rotation: Rotation,
@@ -131,6 +130,53 @@ impl Placement {
             .map(|&(x, y)| b.column_height(x as usize) - y)
             .max()
             .unwrap()
+    }
+
+    /// Get the other representation of this location, if it exists.
+    pub fn other(self) -> Option<Placement> {
+        Some(match (self.piece, self.rotation) {
+            (Piece::I, Rotation::North) => Placement {
+                rotation: Rotation::South,
+                x: self.x + 1,
+                ..self
+            },
+            (Piece::I, Rotation::South) => Placement {
+                rotation: Rotation::North,
+                x: self.x - 1,
+                ..self
+            },
+            (Piece::I, Rotation::East) => Placement {
+                rotation: Rotation::West,
+                y: self.y + 1,
+                ..self
+            },
+            (Piece::I, Rotation::West) => Placement {
+                rotation: Rotation::East,
+                y: self.y - 1,
+                ..self
+            },
+            (Piece::S | Piece::Z, Rotation::North) => Placement {
+                rotation: Rotation::South,
+                y: self.y + 1,
+                ..self
+            },
+            (Piece::S | Piece::Z, Rotation::South) => Placement {
+                rotation: Rotation::North,
+                y: self.y - 1,
+                ..self
+            },
+            (Piece::S | Piece::Z, Rotation::East) => Placement {
+                rotation: Rotation::West,
+                x: self.x + 1,
+                ..self
+            },
+            (Piece::S | Piece::Z, Rotation::West) => Placement {
+                rotation: Rotation::East,
+                x: self.x - 1,
+                ..self
+            },
+            (Piece::O | Piece::L | Piece::J | Piece::T, _) => return None,
+        })
     }
 }
 

@@ -3,6 +3,7 @@ use structopt::StructOpt;
 
 mod data;
 mod sixline;
+mod pathfind;
 
 #[derive(StructOpt)]
 pub enum Command {
