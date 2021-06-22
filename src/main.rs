@@ -2,18 +2,22 @@ use arrayvec::ArrayVec;
 use structopt::StructOpt;
 
 mod data;
-mod sixline;
+mod fourline;
 mod pathfind;
+mod sixline;
 
 #[derive(StructOpt)]
 pub enum Command {
     /// TSD-Tetris PC database generation commands
     SixLine(sixline::Options),
+    /// 4-line PC database generation commands
+    FourLine(fourline::Options),
 }
 
 pub fn main() {
     match Command::from_args() {
         Command::SixLine(subcommand) => subcommand.run(),
+        Command::FourLine(subcommand) => subcommand.run(),
     }
 }
 

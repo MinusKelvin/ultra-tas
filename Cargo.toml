@@ -16,6 +16,7 @@ arrayvec = "0.7.1"
 zstd = { version = "0.8.1", features = ["zstdmt"] }
 structopt = "0.3.21"
 bytemuck = { version = "1.5.1", features = ["derive"] }
+pcf = { git = "https://github.com/MinusKelvin/pcf" }
 
 [profile.release]
 debug = true
