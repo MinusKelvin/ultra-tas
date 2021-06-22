@@ -17,12 +17,12 @@ fn check_hard_drops() {
                 y: 0,
             }
         ),
-        Some(vec![
+        Some((38, vec![
             EnumSet::only(Input::Left),
             EnumSet::empty(),
             EnumSet::only(Input::Left),
             EnumSet::only(Input::HardDrop)
-        ])
+        ]))
     );
     assert_eq!(
         pathfind(
@@ -34,11 +34,11 @@ fn check_hard_drops() {
                 y: 1,
             }
         ),
-        Some(vec![
+        Some((36, vec![
             EnumSet::only(Input::Cw),
             EnumSet::empty(),
             Input::Cw | Input::HardDrop
-        ])
+        ]))
     );
     assert_eq!(
         pathfind(
@@ -50,7 +50,7 @@ fn check_hard_drops() {
                 y: 1,
             }
         ),
-        Some(vec![Input::Cw | Input::HardDrop])
+        Some((36, vec![Input::Cw | Input::HardDrop]))
     );
     assert_eq!(
         pathfind(
@@ -62,7 +62,7 @@ fn check_hard_drops() {
                 y: 1,
             }
         ),
-        Some(vec![Input::Ccw | Input::HardDrop])
+        Some((36, vec![Input::Ccw | Input::HardDrop]))
     );
 }
 
@@ -85,8 +85,8 @@ fn check_tucks() {
                 y: 0
             }
         )
-        .map(|v| v.len()),
-        Some(19 * 3 + 4 * 2)
+        .map(|(s, v)| (s, v.len())),
+        Some((19, 19 * 3 + 4 * 2))
     );
     assert_eq!(
         pathfind(
@@ -98,8 +98,8 @@ fn check_tucks() {
                 y: 0
             }
         )
-        .map(|v| v.len()),
-        Some(19 * 3 + 5 * 2)
+        .map(|(s, v)| (s, v.len())),
+        Some((19, 19 * 3 + 5 * 2))
     );
 
     let blocking = Board([0, 0, 0, 0, 0, 0, 0, 0, 0, 0b1000]);
@@ -113,8 +113,8 @@ fn check_tucks() {
                 y: 1
             }
         ))
-        .map(|v| v.len()),
-        Some(18 * 3 + 5 * 2)
+        .map(|(s, v)| (s, v.len())),
+        Some((18, 18 * 3 + 5 * 2))
     );
 }
 
@@ -136,8 +136,8 @@ fn spins() {
                 y: 0,
             }
         )
-        .map(|v| v.len()),
-        Some(17 * 3 + 4 * 2 + 1)
+        .map(|(s, v)| (s, v.len())),
+        Some((17, 17 * 3 + 4 * 2 + 1))
     );
 
     assert_eq!(
@@ -150,8 +150,8 @@ fn spins() {
                 y: 0,
             }
         )
-        .map(|v| v.len()),
-        Some(17 * 3 + 1)
+        .map(|(s, v)| (s, v.len())),
+        Some((17, 17 * 3 + 1))
     );
 
     assert_eq!(
@@ -164,8 +164,8 @@ fn spins() {
                 y: 0,
             }
         )
-        .map(|v| v.len()),
-        Some(18 * 3 + 3 * 2)
+        .map(|(s, v)| (s, v.len())),
+        Some((18, 18 * 3 + 3 * 2))
     );
 
     assert_eq!(
@@ -178,8 +178,8 @@ fn spins() {
                 y: 0,
             }
         )
-        .map(|v| v.len()),
-        Some(18 * 3 + 1 * 2 + 1)
+        .map(|(s, v)| (s, v.len())),
+        Some((18, 18 * 3 + 1 * 2 + 1))
     );
 }
 
@@ -204,8 +204,8 @@ fn tst() {
                 y: 1
             }
         )
-        .map(|v| v.len()),
-        Some(16 * 3 + 3 * 2)
+        .map(|(s, v)| (s, v.len())),
+        Some((16, 16 * 3 + 3 * 2))
     );
 }
 
@@ -228,7 +228,7 @@ fn same_frame_spin_tuck() {
                 y: 1
             }
         )
-        .map(|v| v.len()),
-        Some(18 * 3 + 3 * 2)
+        .map(|(s, v)| (s, v.len())),
+        Some((18, 18 * 3 + 3 * 2))
     );
 }

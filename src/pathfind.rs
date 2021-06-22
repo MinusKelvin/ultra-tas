@@ -16,13 +16,9 @@ pub enum Input {
     HardDrop,
 }
 
-pub fn pathfind(board: &Board, placement: Placement) -> Option<Vec<EnumSet<Input>>> {
+pub fn pathfind(board: &Board, placement: Placement) -> Option<(u32, Vec<EnumSet<Input>>)> {
     let mut best: Option<Vec<_>> = None;
-    let mut update_best = |new: Vec<_>| match &mut best {
-        Some(b) if new.len() < b.len() => *b = new,
-        None => best = Some(new),
-        _ => {}
-    };
+    let mut best_score = 0;
 
     let mut reverse_paths = HashMap::<_, Vec<EnumSet<_>>>::new();
     let mut queue = BinaryHeap::new();
@@ -56,17 +52,29 @@ pub fn pathfind(board: &Board, placement: Placement) -> Option<Vec<EnumSet<Input
         }
 
         if let Some(mut path) = above_stack(board, item.vertex.place) {
+            let top_y = match (item.vertex.place.piece, item.vertex.place.rotation) {
+                (Piece::O, Rotation::East | Rotation::South) => 20,
+                (Piece::I, Rotation::West | Rotation::South) => 18,
+                _ => 19,
+            };
+            let mut score = (top_y - item.vertex.place.y) as u32 * 2;
             if item.inputs != 0 {
-                let top_y = match (item.vertex.place.piece, item.vertex.place.rotation) {
-                    (Piece::O, Rotation::East | Rotation::South) => 20,
-                    (Piece::I, Rotation::West | Rotation::South) => 18,
-                    _ => 19,
-                };
                 add_soft_drop(&mut path, (top_y - item.vertex.place.y) as usize);
                 path.extend(rev_path.into_iter().rev());
+                score /= 2;
             }
             add_hard_drop(&mut path);
-            update_best(path);
+            match &mut best {
+                Some(b) if path.len() < b.len() => {
+                    *b = path;
+                    best_score = score;
+                },
+                None => {
+                    best = Some(path);
+                    best_score = score;
+                }
+                _ => {}
+            }
             continue;
         }
 
@@ -150,7 +158,7 @@ pub fn pathfind(board: &Board, placement: Placement) -> Option<Vec<EnumSet<Input
         }
     }
 
-    best
+    best.map(|v| (best_score, v))
 }
 
 fn un_move(board: &Board, place: Placement, action: Input) -> ArrayVec<Placement, 5> {
