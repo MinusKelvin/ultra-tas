@@ -1,10 +1,12 @@
+use std::collections::hash_map::Entry;
 use std::collections::{BinaryHeap, HashMap};
 
+use arrayvec::ArrayVec;
 use enumset::{EnumSet, EnumSetType};
 
 use crate::data::{Board, Piece, Placement, Rotation};
 
-#[derive(EnumSetType, Debug)]
+#[derive(EnumSetType, Debug, Hash)]
 pub enum Input {
     Left,
     Right,
@@ -16,93 +18,206 @@ pub enum Input {
 
 pub fn pathfind(board: &Board, placement: Placement) -> Option<Vec<EnumSet<Input>>> {
     let mut best: Option<Vec<_>> = None;
-    let mut reverse_paths = HashMap::new();
-    let mut queue = BinaryHeap::new();
-
-    reverse_paths.insert(
-        placement,
-        ByPrevMove {
-            left: Some(vec![]),
-            right: Some(vec![]),
-            cw: Some(vec![]),
-            ccw: Some(vec![]),
-        },
-    );
-    queue.push(QueueItem {
-        place: placement,
-        inputs: 0,
-    });
-
-    if let Some(placement) = placement.other() {
-        reverse_paths.insert(
-            placement,
-            ByPrevMove {
-                left: Some(vec![]),
-                right: Some(vec![]),
-                cw: Some(vec![]),
-                ccw: Some(vec![]),
-            },
-        );
-        queue.push(QueueItem {
-            place: placement,
-            inputs: 0,
-        });
-    }
-
     let mut update_best = |new: Vec<_>| match &mut best {
         Some(b) if new.len() < b.len() => *b = new,
         None => best = Some(new),
         _ => {}
     };
 
+    let mut reverse_paths = HashMap::<_, Vec<EnumSet<_>>>::new();
+    let mut queue = BinaryHeap::new();
+
+    let starting_vertex = Vertex {
+        place: placement,
+        next_input: EnumSet::empty(),
+    };
+    reverse_paths.insert(starting_vertex, vec![]);
+    queue.push(QueueItem {
+        vertex: starting_vertex,
+        inputs: 0,
+    });
+
+    if let Some(placement) = placement.other() {
+        let starting_vertex = Vertex {
+            place: placement,
+            next_input: EnumSet::empty(),
+        };
+        reverse_paths.insert(starting_vertex, vec![]);
+        queue.push(QueueItem {
+            vertex: starting_vertex,
+            inputs: 0,
+        });
+    }
+
     while let Some(item) = queue.pop() {
-        if let Some(mut path) = above_stack(board, item.place) {
-            let rev_path = reverse_paths.get(&item.place).unwrap().shortest();
-            if rev_path.is_empty() {
-                add_hard_drop(&mut path);
-            } else {
-                add_soft_drop(&mut path, (19 - item.place.y) as usize);
-                path.extend(rev_path.iter().rev());
-                add_hard_drop(&mut path);
+        let rev_path = reverse_paths.get(&item.vertex).unwrap().clone();
+        if item.inputs != rev_path.len() {
+            continue;
+        }
+
+        if let Some(mut path) = above_stack(board, item.vertex.place) {
+            if item.inputs != 0 {
+                let top_y = match (item.vertex.place.piece, item.vertex.place.rotation) {
+                    (Piece::O, Rotation::East | Rotation::South) => 20,
+                    (Piece::I, Rotation::West | Rotation::South) => 18,
+                    _ => 19,
+                };
+                add_soft_drop(&mut path, (top_y - item.vertex.place.y) as usize);
+                path.extend(rev_path.into_iter().rev());
             }
+            add_hard_drop(&mut path);
             update_best(path);
             continue;
         }
 
-        // todo
+        let mut expand = |place: Placement, inputs: EnumSet<Input>| {
+            let vertex = Vertex {
+                place,
+                next_input: inputs,
+            };
+            let mut rev_path = rev_path.clone();
+            rev_path.push(inputs);
+            match reverse_paths.entry(vertex) {
+                Entry::Occupied(mut e) => {
+                    if rev_path.len() < e.get().len() {
+                        queue.push(QueueItem {
+                            vertex,
+                            inputs: rev_path.len(),
+                        });
+                        e.insert(rev_path);
+                    }
+                }
+                Entry::Vacant(e) => {
+                    queue.push(QueueItem {
+                        vertex,
+                        inputs: rev_path.len(),
+                    });
+                    e.insert(rev_path);
+                }
+            }
+        };
+
+        if !item.vertex.next_input.contains(Input::Left) {
+            for place in un_move(board, item.vertex.place, Input::Left) {
+                expand(place, EnumSet::only(Input::Left));
+
+                // same-frame rotates happen before movements
+                if !item.vertex.next_input.contains(Input::Cw) {
+                    for place in un_move(board, place, Input::Cw) {
+                        expand(place, Input::Left | Input::Cw);
+                    }
+                }
+                if !item.vertex.next_input.contains(Input::Ccw) {
+                    for place in un_move(board, place, Input::Ccw) {
+                        expand(place, Input::Left | Input::Ccw);
+                    }
+                }
+            }
+        }
+
+        if !item.vertex.next_input.contains(Input::Right) {
+            for place in un_move(board, item.vertex.place, Input::Right) {
+                expand(place, EnumSet::only(Input::Right));
+
+                // same-frame rotates happen before movements
+                if !item.vertex.next_input.contains(Input::Cw) {
+                    for place in un_move(board, place, Input::Cw) {
+                        expand(place, Input::Right | Input::Cw);
+                    }
+                }
+                if !item.vertex.next_input.contains(Input::Ccw) {
+                    for place in un_move(board, place, Input::Ccw) {
+                        expand(place, Input::Right | Input::Ccw);
+                    }
+                }
+            }
+        }
+
+        if !item.vertex.next_input.contains(Input::Cw) {
+            for place in un_move(board, item.vertex.place, Input::Cw) {
+                expand(place, EnumSet::only(Input::Cw));
+            }
+        }
+
+        if !item.vertex.next_input.contains(Input::Ccw) {
+            for place in un_move(board, item.vertex.place, Input::Ccw) {
+                expand(place, EnumSet::only(Input::Ccw));
+            }
+        }
+
+        if !item.vertex.next_input.is_empty() {
+            expand(item.vertex.place, EnumSet::empty());
+        }
     }
 
     best
 }
 
-#[derive(Default)]
-struct ByPrevMove {
-    left: Option<Vec<EnumSet<Input>>>,
-    right: Option<Vec<EnumSet<Input>>>,
-    cw: Option<Vec<EnumSet<Input>>>,
-    ccw: Option<Vec<EnumSet<Input>>>,
+fn un_move(board: &Board, place: Placement, action: Input) -> ArrayVec<Placement, 5> {
+    let mut places = ArrayVec::new();
+    let mut reverse_rotate = |source: Rotation| {
+        let kicks_back = place.kicks(source);
+        for (dx, dy) in kicks_back {
+            let start = Placement {
+                x: place.x + dx,
+                y: place.y + dy,
+                rotation: source,
+                piece: place.piece,
+            };
+            if start.obstructed(board) {
+                continue;
+            }
+            for (dx, dy) in start.kicks(place.rotation) {
+                let result = Placement {
+                    x: start.x + dx,
+                    y: start.y + dy,
+                    rotation: place.rotation,
+                    piece: place.piece,
+                };
+                if !result.obstructed(board) {
+                    if result == place {
+                        places.push(start);
+                    }
+                    break;
+                }
+            }
+        }
+    };
+    match action {
+        Input::Left => {
+            let place = Placement {
+                x: place.x + 1,
+                ..place
+            };
+            if !place.obstructed(board) {
+                places.push(place);
+            }
+        }
+        Input::Right => {
+            let place = Placement {
+                x: place.x - 1,
+                ..place
+            };
+            if !place.obstructed(board) {
+                places.push(place);
+            }
+        }
+        Input::Cw => reverse_rotate(place.rotation.ccw()),
+        Input::Ccw => reverse_rotate(place.rotation.cw()),
+        _ => unreachable!(),
+    };
+    places
 }
 
-impl ByPrevMove {
-    fn filtered(&self, inc: EnumSet<Input>) -> impl Iterator<Item = &[EnumSet<Input>]> {
-        let left = self.left.as_deref().filter(|_| inc.contains(Input::Left));
-        let right = self.right.as_deref().filter(|_| inc.contains(Input::Right));
-        let cw = self.cw.as_deref().filter(|_| inc.contains(Input::Cw));
-        let ccw = self.ccw.as_deref().filter(|_| inc.contains(Input::Ccw));
-
-        std::array::IntoIter::new([left, right, cw, ccw]).filter_map(|x| x)
-    }
-
-    fn shortest(&self) -> &[EnumSet<Input>] {
-        self.filtered(EnumSet::all())
-            .min_by_key(|v| v.len())
-            .unwrap()
-    }
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+struct Vertex {
+    place: Placement,
+    next_input: EnumSet<Input>,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct QueueItem {
-    place: Placement,
+    vertex: Vertex,
     inputs: usize,
 }
 
@@ -186,64 +301,6 @@ impl PartialOrd for QueueItem {
     }
 }
 
-#[test]
-fn check_ez_hard_drops() {
-    let empty = Board([0; 10]);
-    assert_eq!(
-        pathfind(
-            &empty,
-            Placement {
-                piece: Piece::O,
-                rotation: Rotation::North,
-                x: 2,
-                y: 0,
-            }
-        ),
-        Some(vec![
-            EnumSet::only(Input::Left),
-            EnumSet::empty(),
-            EnumSet::only(Input::Left),
-            EnumSet::only(Input::HardDrop)
-        ])
-    );
-    assert_eq!(
-        pathfind(
-            &empty,
-            Placement {
-                piece: Piece::T,
-                rotation: Rotation::South,
-                x: 4,
-                y: 1,
-            }
-        ),
-        Some(vec![
-            EnumSet::only(Input::Cw),
-            EnumSet::empty(),
-            Input::Cw | Input::HardDrop
-        ])
-    );
-    assert_eq!(
-        pathfind(
-            &empty,
-            Placement {
-                piece: Piece::S,
-                rotation: Rotation::East,
-                x: 4,
-                y: 1,
-            }
-        ),
-        Some(vec![Input::Cw | Input::HardDrop])
-    );
-    assert_eq!(
-        pathfind(
-            &empty,
-            Placement {
-                piece: Piece::S,
-                rotation: Rotation::East,
-                x: 3,
-                y: 1,
-            }
-        ),
-        Some(vec![Input::Ccw | Input::HardDrop])
-    );
-}
+#[cfg(test)]
+#[path = "pathfind-tests.rs"]
+mod tests;

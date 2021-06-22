@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+use arrayvec::ArrayVec;
 use enumset::{EnumSet, EnumSetType};
 use serde::{Deserialize, Serialize};
 
@@ -90,6 +91,19 @@ impl Rotation {
             Rotation::West => (-y, x),
         }
     }
+
+    pub const fn cw(self) -> Self {
+        match self {
+            Rotation::North => Rotation::East,
+            Rotation::East => Rotation::South,
+            Rotation::South => Rotation::West,
+            Rotation::West => Rotation::North,
+        }
+    }
+
+    pub const fn ccw(self) -> Self {
+        self.cw().cw().cw()
+    }
 }
 
 impl Placement {
@@ -130,6 +144,55 @@ impl Placement {
             .map(|&(x, y)| b.column_height(x as usize) - y)
             .max()
             .unwrap()
+    }
+
+    pub fn obstructed(&self, b: &Board) -> bool {
+        for (x, y) in self.cells() {
+            if x < 0 || x >= 10 || y < 0 {
+                return true;
+            }
+            if b.0[x as usize] & 1 << y != 0 {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn kicks(&self, to: Rotation) -> [(i8, i8); 5] {
+        let offsets_1 = self.offsets();
+        let offsets_2 = Placement {
+            rotation: to,
+            ..*self
+        }
+        .offsets();
+        let mut r = ArrayVec::new();
+        for (&(x1, y1), &(x2, y2)) in offsets_1.iter().zip(offsets_2.iter()) {
+            r.push((x1 - x2, y1 - y2));
+        }
+        r.into_inner().unwrap_or_else(|_| unreachable!())
+    }
+
+    fn offsets(&self) -> [(i8, i8); 5] {
+        match self.piece {
+            Piece::O => match self.rotation {
+                Rotation::North => [(0, 0); 5],
+                Rotation::East => [(0, -1); 5],
+                Rotation::South => [(-1, -1); 5],
+                Rotation::West => [(-1, 0); 5],
+            },
+            Piece::I => match self.rotation {
+                Rotation::North => [(0, 0), (-1, 0), (2, 0), (-1, 0), (2, 0)],
+                Rotation::East => [(-1, 0), (0, 0), (0, 0), (0, 1), (0, -2)],
+                Rotation::South => [(-1, 1), (1, 1), (-2, 1), (1, 0), (-2, 0)],
+                Rotation::West => [(0, 1), (0, 1), (0, 1), (0, -1), (0, 2)],
+            },
+            _ => match self.rotation {
+                Rotation::North => [(0, 0); 5],
+                Rotation::East => [(0, 0), (1, 0), (1, -1), (0, 2), (1, 2)],
+                Rotation::South => [(0, 0); 5],
+                Rotation::West => [(0, 0), (-1, 0), (-1, -1), (0, 2), (-1, 2)],
+            },
+        }
     }
 
     /// Get the other representation of this location, if it exists.
@@ -222,5 +285,19 @@ impl Board {
         self.0
             .iter()
             .any(|&c| (!0u8 as u16 >> c.leading_zeros()) as u8 & !c != 0)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_natural(rows: &[[bool; 10]]) -> Self {
+        let mut this = Board([0; 10]);
+        for row in rows {
+            for (x, &filled) in row.iter().enumerate() {
+                this.0[x] <<= 1;
+                if filled {
+                    this.0[x] |= 1;
+                }
+            }
+        }
+        this
     }
 }
