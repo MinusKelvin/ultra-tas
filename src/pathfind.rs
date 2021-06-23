@@ -175,10 +175,10 @@ fn un_move(board: &Board, place: Placement, action: Input) -> ArrayVec<Placement
             if start.obstructed(board) {
                 continue;
             }
-            for (dx, dy) in start.kicks(place.rotation) {
+            for (dx, dy) in kicks_back {
                 let result = Placement {
-                    x: start.x + dx,
-                    y: start.y + dy,
+                    x: start.x - dx,
+                    y: start.y - dy,
                     rotation: place.rotation,
                     piece: place.piece,
                 };

@@ -1,6 +1,5 @@
 use std::ops::Range;
 
-use arrayvec::ArrayVec;
 use enumset::{EnumSet, EnumSetType};
 use serde::{Deserialize, Serialize};
 
@@ -129,10 +128,32 @@ impl Placement {
 
     #[inline(always)]
     pub fn cells(self) -> [(i8, i8); 4] {
-        self.piece
-            .cells()
-            .amap(|c| self.rotation.rotate_cell(c))
-            .amap(|(x, y)| (x + self.x, y + self.y))
+        const fn rotate(cells: [(i8, i8); 4], r: Rotation) -> [(i8, i8); 4] {
+            [
+                r.rotate_cell(cells[0]),
+                r.rotate_cell(cells[1]),
+                r.rotate_cell(cells[2]),
+                r.rotate_cell(cells[3]),
+            ]
+        }
+        const fn rotations(piece: Piece) -> [[(i8, i8); 4]; 4] {
+            [
+                rotate(piece.cells(), Rotation::North),
+                rotate(piece.cells(), Rotation::East),
+                rotate(piece.cells(), Rotation::South),
+                rotate(piece.cells(), Rotation::West),
+            ]
+        }
+        const LUT: [[[(i8, i8); 4]; 4]; 7] = [
+            rotations(Piece::I),
+            rotations(Piece::O),
+            rotations(Piece::T),
+            rotations(Piece::L),
+            rotations(Piece::J),
+            rotations(Piece::S),
+            rotations(Piece::Z),
+        ];
+        LUT[self.piece as usize][self.rotation as usize].amap(|(x, y)| (x + self.x, y + self.y))
     }
 
     #[inline(always)]
@@ -146,7 +167,7 @@ impl Placement {
             .unwrap()
     }
 
-    pub fn obstructed(&self, b: &Board) -> bool {
+    pub fn obstructed(self, b: &Board) -> bool {
         for (x, y) in self.cells() {
             if x < 0 || x >= 10 || y < 0 {
                 return true;
@@ -158,21 +179,17 @@ impl Placement {
         false
     }
 
-    pub fn kicks(&self, to: Rotation) -> [(i8, i8); 5] {
+    pub fn kicks(self, to: Rotation) -> [(i8, i8); 5] {
         let offsets_1 = self.offsets();
         let offsets_2 = Placement {
             rotation: to,
-            ..*self
+            ..self
         }
         .offsets();
-        let mut r = ArrayVec::new();
-        for (&(x1, y1), &(x2, y2)) in offsets_1.iter().zip(offsets_2.iter()) {
-            r.push((x1 - x2, y1 - y2));
-        }
-        r.into_inner().unwrap_or_else(|_| unreachable!())
+        offsets_1.azip(offsets_2, |(x1, y1), (x2, y2)| (x1 - x2, y1 - y2))
     }
 
-    fn offsets(&self) -> [(i8, i8); 5] {
+    fn offsets(self) -> [(i8, i8); 5] {
         match self.piece {
             Piece::O => match self.rotation {
                 Rotation::North => [(0, 0); 5],

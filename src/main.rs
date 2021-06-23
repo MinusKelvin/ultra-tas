@@ -1,4 +1,5 @@
-use arrayvec::ArrayVec;
+use std::mem::MaybeUninit;
+
 use structopt::StructOpt;
 
 mod data;
@@ -25,15 +26,28 @@ pub fn main() {
 trait ArrayExt<A, B> {
     type Map;
     fn amap(self, f: impl FnMut(A) -> B) -> Self::Map;
+    fn azip(self, other: Self, f: impl FnMut(A, A) -> B) -> Self::Map;
 }
 
 impl<A, B, const N: usize> ArrayExt<A, B> for [A; N] {
     type Map = [B; N];
-    fn amap(self, f: impl FnMut(A) -> B) -> [B; N] {
-        std::array::IntoIter::new(self)
-            .map(f)
-            .collect::<ArrayVec<_, N>>()
-            .into_inner()
-            .unwrap_or_else(|_| unreachable!())
+
+    fn amap(self, mut f: impl FnMut(A) -> B) -> [B; N] {
+        let mut result: [MaybeUninit<B>; N] = unsafe { MaybeUninit::uninit().assume_init() };
+        for (i, a) in std::array::IntoIter::new(self).enumerate() {
+            result[i] = MaybeUninit::new(f(a));
+        }
+        unsafe { std::mem::transmute_copy(&result) }
+    }
+
+    fn azip(self, other: Self, mut f: impl FnMut(A, A) -> B) -> [B; N] {
+        let mut result: [MaybeUninit<B>; N] = unsafe { MaybeUninit::uninit().assume_init() };
+        for (i, (a, b)) in std::array::IntoIter::new(self)
+            .zip(std::array::IntoIter::new(other))
+            .enumerate()
+        {
+            result[i] = MaybeUninit::new(f(a, b));
+        }
+        unsafe { std::mem::transmute_copy(&result) }
     }
 }
