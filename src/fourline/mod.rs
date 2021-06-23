@@ -26,6 +26,8 @@ impl Options {
                     &mut |_| {
                         soln_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     },
+                    0,
+                    0,
                 );
                 let count = combo_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 if 1000 * count / 24663998 != 1000 * (count + 1) / 24663998 {
@@ -34,6 +36,9 @@ impl Options {
                         (count + 1) as f64 * 100.0 / 24663998.0,
                         soln_count.load(std::sync::atomic::Ordering::Relaxed)
                     );
+                    if 100 * (count + 1) / 24663998 != 0 {
+                        std::process::exit(0);
+                    }
                 }
             },
         );
@@ -52,6 +57,8 @@ fn find_placement_sequences(
     board: pcf::BitBoard,
     remaining: &mut Vec<pcf::Placement>,
     found: &mut impl FnMut(&[Placement]),
+    score: u32,
+    time: u32,
 ) {
     if remaining.is_empty() {
         found(current);
@@ -61,43 +68,42 @@ fn find_placement_sequences(
         if board.overlaps(placement.board()) || !placement.supported(board) {
             continue;
         }
-        if !placeable(board, placement) {
-            continue;
+
+        let cleared = board.lines_cleared();
+        let mut board_2 = Board([0; 10]);
+        for y in 0..6 {
+            for x in 0..10 {
+                if cleared.cell_filled(x, y) {
+                    board_2.0[x] |= 1 << y;
+                }
+            }
         }
+
+        let place = placement.srs_piece(board)[0].into();
+        let (extra_score, extra_time) = match pathfind(&board_2, place) {
+            Some((es, mvs)) => (es, mvs.len() as u32),
+            None => continue,
+        };
 
         let new_board = board.combine(placement.board());
 
         remaining.swap_remove(i);
-        current.push(placement.srs_piece(board)[0].into());
+        current.push(place);
 
-        find_placement_sequences(current, new_board, remaining, found);
+        find_placement_sequences(
+            current,
+            new_board,
+            remaining,
+            found,
+            score + extra_score,
+            time + extra_time,
+        );
 
         current.pop();
         remaining.push(placement);
         let last_index = remaining.len() - 1;
         remaining.swap(i, last_index);
     }
-}
-
-fn placeable(board: pcf::BitBoard, placement: pcf::Placement) -> bool {
-    if pcf::placeability::simple_srs_spins(board, placement) {
-        return true;
-    }
-
-    let place = placement.srs_piece(board)[0].into();
-
-    let board = board.lines_cleared();
-
-    let mut b = Board([0; 10]);
-    for y in 0..6 {
-        for x in 0..10 {
-            if board.cell_filled(x, y) {
-                b.0[x] |= 1 << y;
-            }
-        }
-    }
-
-    pathfind(&b, place).is_some()
 }
 
 impl From<pcf::SrsPiece> for Placement {

@@ -17,12 +17,15 @@ fn check_hard_drops() {
                 y: 0,
             }
         ),
-        Some((38, vec![
-            EnumSet::only(Input::Left),
-            EnumSet::empty(),
-            EnumSet::only(Input::Left),
-            EnumSet::only(Input::HardDrop)
-        ]))
+        Some((
+            38,
+            vec![
+                EnumSet::only(Input::Left),
+                EnumSet::empty(),
+                EnumSet::only(Input::Left),
+                EnumSet::only(Input::HardDrop)
+            ]
+        ))
     );
     assert_eq!(
         pathfind(
@@ -34,11 +37,14 @@ fn check_hard_drops() {
                 y: 1,
             }
         ),
-        Some((36, vec![
-            EnumSet::only(Input::Cw),
-            EnumSet::empty(),
-            Input::Cw | Input::HardDrop
-        ]))
+        Some((
+            36,
+            vec![
+                EnumSet::only(Input::Cw),
+                EnumSet::empty(),
+                Input::Cw | Input::HardDrop
+            ]
+        ))
     );
     assert_eq!(
         pathfind(
@@ -99,12 +105,12 @@ fn check_tucks() {
             }
         )
         .map(|(s, v)| (s, v.len())),
-        Some((19, 19 * 3 + 5 * 2))
+        Some((19, 19 * 3 + 3 * 2))
     );
 
     let blocking = Board([0, 0, 0, 0, 0, 0, 0, 0, 0, 0b1000]);
     assert_eq!(
-        dbg!(pathfind(
+        pathfind(
             &blocking,
             Placement {
                 piece: Piece::J,
@@ -112,7 +118,7 @@ fn check_tucks() {
                 x: 9,
                 y: 1
             }
-        ))
+        )
         .map(|(s, v)| (s, v.len())),
         Some((18, 18 * 3 + 5 * 2))
     );
@@ -226,6 +232,77 @@ fn same_frame_spin_tuck() {
                 rotation: Rotation::South,
                 x: 1,
                 y: 1
+            }
+        )
+        .map(|(s, v)| (s, v.len())),
+        Some((18, 18 * 3 + 3 * 2))
+    );
+}
+
+#[test]
+fn intermediate_drop() {
+    #[rustfmt::skip]
+    let board = Board::from_natural(&[
+        [false, false, false, false, false, true,  true,  true,  false, false],
+        [false, false, false, false, false, true,  false, false, false, false],
+        [false, false, false, false, false, true,  false, false, false, true],
+    ]);
+    assert_eq!(
+        pathfind(
+            &board,
+            Placement {
+                piece: Piece::S,
+                rotation: Rotation::North,
+                x: 8,
+                y: 0
+            }
+        )
+        .map(|(s, v)| (s, v.len())),
+        Some((2 + 16, 16 * 3 + 3 * 2 + 1))
+    );
+    assert_eq!(
+        pathfind(
+            &board,
+            Placement {
+                piece: Piece::S,
+                rotation: Rotation::North,
+                x: 7,
+                y: 0
+            }
+        )
+        .map(|(s, v)| (s, v.len())),
+        Some((17, 17 * 3 + 4 * 2 + 1))
+    );
+}
+
+#[test]
+fn double_rotate() {
+    #[rustfmt::skip]
+    let board = Board::from_natural(&[
+        [true,  false, false, false, false, false, false, false, false, false],
+        [false, false, false, false, false, false, false, false, false, false],
+    ]);
+    assert_eq!(
+        pathfind(
+            &board,
+            Placement {
+                piece: Piece::S,
+                rotation: Rotation::North,
+                x: 1,
+                y: 0
+            }
+        )
+        .map(|(s, v)| (s, v.len())),
+        Some((18, 18 * 3 + 3 * 2))
+    );
+    assert_eq!(
+        pathfind(
+            &board,
+            Placement {
+                piece: Piece::I,
+                rotation: Rotation::North,
+                x: 1,
+                y: 0
             }
         )
         .map(|(s, v)| (s, v.len())),
