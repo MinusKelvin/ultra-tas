@@ -106,6 +106,25 @@ impl Rotation {
 }
 
 impl Placement {
+    pub fn pack(self) -> u8 {
+        (self.x as u8 + self.y as u8 * 10) << 2 | self.rotation as u8
+    }
+
+    pub fn unpack(packed: u8, piece: Piece) -> Self {
+        Placement {
+            piece,
+            rotation: match packed & 3 {
+                0 => Rotation::North,
+                1 => Rotation::East,
+                2 => Rotation::South,
+                3 => Rotation::West,
+                _ => unreachable!()
+            },
+            x: ((packed >> 2) % 10) as i8,
+            y: ((packed >> 2) / 10) as i8,
+        }
+    }
+
     #[inline(always)]
     pub const fn valid_x_span(self) -> Range<i8> {
         match self.piece {
@@ -304,6 +323,17 @@ impl Board {
             .any(|&c| (!0u8 as u16 >> c.leading_zeros()) as u8 & !c != 0)
     }
 
+    #[inline(always)]
+    pub fn is_filled(self, (x, y): (i8, i8)) -> bool {
+        if x < 0 || x >= 10 || y < 0 {
+            true
+        } else if y >= 8 {
+            false
+        } else {
+            self.0[x as usize] & 1 << y != 0
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn from_natural(rows: &[[bool; 10]]) -> Self {
         let mut this = Board([0; 10]);
@@ -316,5 +346,63 @@ impl Board {
             }
         }
         this
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Spin {
+    Nope,
+    Mini,
+    Full,
+}
+
+pub const SPAWN_DELAY: u32 = 7;
+
+pub fn line_clear_delay(lines_cleared: u32, perfect_clear: bool) -> u32 {
+    if perfect_clear {
+        1
+    } else {
+        match lines_cleared {
+            0 => 0,
+            1 => 36,
+            2 | 3 => 41,
+            4 => 46,
+            _ => unreachable!(),
+        }
+    }
+}
+
+pub fn line_clear_score(lines_cleared: u32, perfect_clear: bool, b2b: bool, spin: Spin) -> u32 {
+    if perfect_clear {
+        match lines_cleared {
+            1 => 900,
+            2 => 1500,
+            3 => 2300,
+            4 if !b2b => 2800,
+            4 if b2b => 4400,
+            _ => unreachable!(),
+        }
+    } else {
+        match (lines_cleared, spin, b2b) {
+            (0, Spin::Nope, _) => 0,
+            (0, Spin::Mini, _) => 100,
+            (0, Spin::Full, _) => 400,
+            (1, Spin::Nope, _) => 100,
+            (1, Spin::Mini, false) => 200,
+            (1, Spin::Mini, true) => 300,
+            (1, Spin::Full, false) => 800,
+            (1, Spin::Full, true) => 1200,
+            (2, Spin::Nope, _) => 300,
+            (2, Spin::Mini, false) => 400,
+            (2, Spin::Mini, true) => 600,
+            (2, Spin::Full, false) => 1200,
+            (2, Spin::Full, true) => 1800,
+            (3, Spin::Nope, _) => 500,
+            (3, Spin::Full, false) => 1600,
+            (3, Spin::Full, true) => 2400,
+            (4, Spin::Nope, false) => 800,
+            (4, Spin::Nope, true) => 1200,
+            _ => unreachable!(),
+        }
     }
 }

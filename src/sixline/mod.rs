@@ -237,7 +237,7 @@ fn build_db() {
 
         for pc in pcs {
             for mv in pc {
-                data.write_all(&[packed_placement(mv)]).unwrap();
+                data.write_all(&[mv.pack()]).unwrap();
                 data_offset += 1;
             }
         }
@@ -277,8 +277,4 @@ fn idx(partial: &[Piece]) -> usize {
 
 fn packed_sequence(seq: [Piece; 8]) -> u32 {
     seq.iter().fold(0, |acc, &p| acc << 4 | p as u32)
-}
-
-fn packed_placement(mv: Placement) -> u8 {
-    (mv.x as u8 + mv.y as u8 * 10) << 2 | mv.rotation as u8
 }
