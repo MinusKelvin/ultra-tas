@@ -10,13 +10,20 @@ use crate::pathfind::{pathfind, Input};
 
 #[derive(StructOpt)]
 pub enum Options {
-    Generate,
+    Generate {
+        #[structopt(long)]
+        b2b: bool,
+    },
 }
 
-const DATABASE_SIZE: usize = 7usize.pow(10) * 2;
+const DATABASE_SIZE: usize = 7usize.pow(10);
 
 impl Options {
     pub fn run(self) {
+        let b2b = match self {
+            Options::Generate { b2b } => b2b,
+        };
+
         let piece_set = pcf::PIECES.repeat(4).into_iter().collect();
 
         let combo_count = std::sync::atomic::AtomicU64::new(0);
@@ -38,22 +45,11 @@ impl Options {
                     pcf::BitBoard(0),
                     &mut combo.to_owned(),
                     &mut |soln, score, time| {
-                        add(&database, soln, score, time, false);
+                        add(&database, soln, score, time);
                     },
                     0,
                     0,
-                    false,
-                );
-                find_placement_sequences(
-                    &mut vec![],
-                    pcf::BitBoard(0),
-                    &mut combo.to_owned(),
-                    &mut |soln, score, time| {
-                        add(&database, soln, score, time, true);
-                    },
-                    0,
-                    0,
-                    true,
+                    b2b,
                 );
                 let count = combo_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 if 1000 * count / 24663998 != 1000 * (count + 1) / 24663998 {
@@ -84,7 +80,11 @@ impl Options {
             t.elapsed(),
         );
 
-        let f = std::fs::File::create("4line.dat").unwrap();
+        let f = std::fs::File::create(match b2b {
+            true => "4line-b2b.dat",
+            false => "4line-nob2b.dat",
+        })
+        .unwrap();
         let f = std::io::BufWriter::new(f);
         bincode::serialize_into(f, database.get_mut().unwrap()).unwrap();
     }
@@ -103,13 +103,7 @@ impl Entry {
     }
 }
 
-fn add(
-    db: &Mutex<Vec<SmallVec<[Entry; 1]>>>,
-    soln: &[Placement],
-    score: u32,
-    time: u32,
-    initial_b2b: bool,
-) {
+fn add(db: &Mutex<Vec<SmallVec<[Entry; 1]>>>, soln: &[Placement], score: u32, time: u32) {
     let pieces = soln
         .iter()
         .map(|p| p.piece)
@@ -131,7 +125,7 @@ fn add(
     };
 
     let mut db = db.lock().unwrap();
-    let archive = &mut db[compute_index(pieces, initial_b2b)];
+    let archive = &mut db[compute_index(pieces)];
     if !archive.iter().any(|e| e.dominates(&entry)) {
         archive.retain(|e| !entry.dominates(e));
         archive.push(entry);
@@ -294,11 +288,11 @@ impl From<pcf::Rotation> for Rotation {
     }
 }
 
-fn compute_index(p: [Piece; 10], b2b: bool) -> usize {
+fn compute_index(p: [Piece; 10]) -> usize {
     let mut idx = 0;
     for p in p {
         idx *= 7;
         idx += p as usize;
     }
-    idx * 2 + b2b as usize
+    idx
 }
