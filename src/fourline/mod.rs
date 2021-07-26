@@ -10,7 +10,6 @@ use structopt::StructOpt;
 
 use crate::data::{line_clear_delay, line_clear_score, Board, Piece, Placement, Rotation, Spin};
 use crate::pathfind::{pathfind, Input};
-use crate::ArrayExt;
 
 #[derive(StructOpt)]
 pub enum Options {
@@ -73,42 +72,64 @@ fn generate_batches() {
 
     std::fs::create_dir_all("4lbatches").unwrap();
     for (i, div) in subdivs.into_iter().enumerate() {
-        let path = format!("4lbatches/{}.dat", i);
-        if std::fs::metadata(&path).is_ok() {
+        if std::fs::metadata(format!("4lbatches/{}.dat", i)).is_ok() {
             continue;
         }
 
         let t = std::time::Instant::now();
-        let data = Mutex::new(
-            std::iter::repeat_with(|| SmallVec::new())
-                .take(DATABASE_SIZE)
-                .collect(),
-        );
+        let normal_db = Mutex::new(BTreeMap::new());
+        let b2b_db = Mutex::new(BTreeMap::new());
         div.par_iter().for_each(|combo| {
-            for b2b in [false, true] {
-                find_placement_sequences(
-                    &mut vec![],
-                    pcf::BitBoard(0),
-                    &mut combo.iter().map(|p| p.0).collect(),
-                    &mut |order, score, time| add(&data, order, score, time),
-                    0,
-                    0,
-                    b2b,
-                );
-            }
+            find_placement_sequences(
+                &mut vec![],
+                pcf::BitBoard(0),
+                &mut combo.iter().map(|p| p.0).collect(),
+                &mut |order, score, time| add(&normal_db, order, score, time),
+                0,
+                0,
+                false,
+            );
+            find_placement_sequences(
+                &mut vec![],
+                pcf::BitBoard(0),
+                &mut combo.iter().map(|p| p.0).collect(),
+                &mut |order, score, time| add(&b2b_db, order, score, time),
+                0,
+                0,
+                true,
+            );
         });
         println!("Batch {} took {:.2?}", i, t.elapsed());
 
         let t = std::time::Instant::now();
-        let mut into = zstd::Encoder::new(std::fs::File::create(path).unwrap(), 9).unwrap();
+        let mut into = zstd::Encoder::new(
+            std::fs::File::create(format!("4lbatches/{}-b2b.dat", i)).unwrap(),
+            9,
+        )
+        .unwrap();
         into.multithread(16).unwrap();
-        for seq in data.into_inner().unwrap() {
-            let buf = bincode::serialize(&seq).unwrap();
+        for v in b2b_db.into_inner().unwrap() {
+            let buf = bincode::serialize(&v).unwrap();
             into.write_all(&(buf.len() as u64).to_le_bytes()).unwrap();
             into.write_all(&buf).unwrap();
         }
         into.finish().unwrap();
-        println!("Saved in {:.2?}", t.elapsed());
+        println!("Saved b2b in {:.2?}", t.elapsed());
+
+        let t = std::time::Instant::now();
+        let mut into = zstd::Encoder::new(
+            std::fs::File::create(format!("4lbatches/{}.dat", i)).unwrap(),
+            9,
+        )
+        .unwrap();
+        into.multithread(16).unwrap();
+        for v in normal_db.into_inner().unwrap() {
+            let buf = bincode::serialize(&v).unwrap();
+            into.write_all(&(buf.len() as u64).to_le_bytes()).unwrap();
+            into.write_all(&buf).unwrap();
+        }
+        into.finish().unwrap();
+        println!("Saved normal in {:.2?}", t.elapsed());
     }
 }
 
@@ -164,7 +185,12 @@ impl Entry {
     }
 }
 
-fn add(db: &Mutex<Vec<SmallVec<[Entry; 1]>>>, soln: &[Placement], score: u32, time: u32) {
+fn add(
+    db: &Mutex<BTreeMap<[Piece; 10], SmallVec<[Entry; 1]>>>,
+    soln: &[Placement],
+    score: u32,
+    time: u32,
+) {
     let pieces = soln
         .iter()
         .map(|p| p.piece)
@@ -186,7 +212,10 @@ fn add(db: &Mutex<Vec<SmallVec<[Entry; 1]>>>, soln: &[Placement], score: u32, ti
     };
 
     let mut db = db.lock().unwrap();
-    let archive = &mut db[compute_index(pieces)];
+    add_to_archive(db.entry(pieces).or_default(), entry);
+}
+
+fn add_to_archive(archive: &mut SmallVec<[Entry; 1]>, entry: Entry) {
     if !archive.iter().any(|e| e.dominates(&entry)) {
         archive.retain(|e| !entry.dominates(e));
         archive.push(entry);
