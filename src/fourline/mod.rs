@@ -1,92 +1,153 @@
+use std::collections::BTreeMap;
+use std::io::Write;
 use std::sync::Mutex;
 
 use arrayvec::ArrayVec;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use structopt::StructOpt;
 
 use crate::data::{line_clear_delay, line_clear_score, Board, Piece, Placement, Rotation, Spin};
 use crate::pathfind::{pathfind, Input};
+use crate::ArrayExt;
 
 #[derive(StructOpt)]
 pub enum Options {
-    Generate {
-        #[structopt(long)]
-        b2b: bool,
-    },
+    GenBatches,
 }
 
 const DATABASE_SIZE: usize = 7usize.pow(10);
 
 impl Options {
     pub fn run(self) {
-        let b2b = match self {
-            Options::Generate { b2b } => b2b,
-        };
+        match self {
+            Options::GenBatches => generate_batches(),
+        }
+    }
+}
 
-        let piece_set = pcf::PIECES.repeat(4).into_iter().collect();
+fn generate_batches() {
+    let piece_set = pcf::PIECES.repeat(4).into_iter().collect();
 
-        let combo_count = std::sync::atomic::AtomicU64::new(0);
-        let mut database = Mutex::new(
-            std::iter::repeat_with(SmallVec::new)
+    let combos = Mutex::new(vec![]);
+
+    let t = std::time::Instant::now();
+    pcf::find_combinations_mt(
+        piece_set,
+        pcf::BitBoard(0),
+        &Default::default(),
+        4,
+        |combo| {
+            combos.lock().unwrap().push([
+                PlacementOrd(combo[0]),
+                PlacementOrd(combo[1]),
+                PlacementOrd(combo[2]),
+                PlacementOrd(combo[3]),
+                PlacementOrd(combo[4]),
+                PlacementOrd(combo[5]),
+                PlacementOrd(combo[6]),
+                PlacementOrd(combo[7]),
+                PlacementOrd(combo[8]),
+                PlacementOrd(combo[9]),
+            ]);
+        },
+    );
+    println!("Took {:.2?} to compute combos", t.elapsed());
+
+    let mut combos = combos.into_inner().unwrap();
+    let t = std::time::Instant::now();
+    combos.sort();
+    println!("Took {:.2?} to sort combos", t.elapsed());
+
+    let mut subdivs = vec![&combos[..]];
+    for _ in 0..10 {
+        let mut new_subdivs = vec![];
+        for div in subdivs {
+            let (left, right) = div.split_at(div.len() / 2);
+            new_subdivs.push(left);
+            new_subdivs.push(right);
+        }
+        subdivs = new_subdivs;
+    }
+
+    std::fs::create_dir_all("4lbatches").unwrap();
+    for (i, div) in subdivs.into_iter().enumerate() {
+        let path = format!("4lbatches/{}.dat", i);
+        if std::fs::metadata(&path).is_ok() {
+            continue;
+        }
+
+        let t = std::time::Instant::now();
+        let data = Mutex::new(
+            std::iter::repeat_with(|| SmallVec::new())
                 .take(DATABASE_SIZE)
                 .collect(),
         );
-        let t = std::time::Instant::now();
-
-        pcf::find_combinations_mt(
-            piece_set,
-            pcf::BitBoard(0),
-            &Default::default(),
-            4,
-            |combo| {
+        div.par_iter().for_each(|combo| {
+            for b2b in [false, true] {
                 find_placement_sequences(
                     &mut vec![],
                     pcf::BitBoard(0),
-                    &mut combo.to_owned(),
-                    &mut |soln, score, time| {
-                        add(&database, soln, score, time);
-                    },
+                    &mut combo.iter().map(|p| p.0).collect(),
+                    &mut |order, score, time| add(&data, order, score, time),
                     0,
                     0,
                     b2b,
                 );
-                let count = combo_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                if 1000 * count / 24663998 != 1000 * (count + 1) / 24663998 {
-                    println!(
-                        "{:.1}%, {:?}",
-                        (count + 1) as f64 * 100.0 / 24663998.0,
-                        t.elapsed()
-                    );
-                }
-            },
-        );
-        let mut total = 0;
-        let mut spilled = 0;
-        let mut longest = 0;
-        for c in database.get_mut().unwrap().iter() {
-            if !c.is_empty() {
-                total += 1;
             }
-            if c.spilled() {
-                spilled += 1;
-            }
-            longest = longest.max(c.len());
-        }
-        println!(
-            "{:.1}% spilled, {} longest, {:.2?}",
-            spilled as f64 / total as f64 * 100.0,
-            longest,
-            t.elapsed(),
-        );
+        });
+        println!("Batch {} took {:.2?}", i, t.elapsed());
 
-        let f = std::fs::File::create(match b2b {
-            true => "4line-b2b.dat",
-            false => "4line-nob2b.dat",
-        })
-        .unwrap();
-        let f = std::io::BufWriter::new(f);
-        bincode::serialize_into(f, database.get_mut().unwrap()).unwrap();
+        let t = std::time::Instant::now();
+        let mut into = zstd::Encoder::new(std::fs::File::create(path).unwrap(), 9).unwrap();
+        into.multithread(16).unwrap();
+        for seq in data.into_inner().unwrap() {
+            let buf = bincode::serialize(&seq).unwrap();
+            into.write_all(&(buf.len() as u64).to_le_bytes()).unwrap();
+            into.write_all(&buf).unwrap();
+        }
+        into.finish().unwrap();
+        println!("Saved in {:.2?}", t.elapsed());
+    }
+}
+
+#[derive(PartialEq, Eq)]
+struct PlacementOrd(pcf::Placement);
+
+impl Ord for PlacementOrd {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0
+            .x
+            .cmp(&other.0.x)
+            .then((self.0.kind as usize).cmp(&(other.0.kind as usize)))
+    }
+}
+
+impl PartialOrd for PlacementOrd {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[derive(Eq)]
+struct PieceOrder(Placement);
+
+impl PartialEq for PieceOrder {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.piece == other.0.piece
+    }
+}
+
+impl Ord for PieceOrder {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (self.0.piece as usize).cmp(&(other.0.piece as usize))
+    }
+}
+
+impl PartialOrd for PieceOrder {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -236,7 +297,7 @@ fn evaluate(b: pcf::BitBoard, place: Placement, b2b: bool) -> Option<PlacementEv
 
     Some(PlacementEvaluation {
         score: movement_score + line_clear_score(lines_cleared, perfect_clear, b2b, spin),
-        time: movements.len() as u32 + line_clear_delay(lines_cleared, perfect_clear),
+        time: movements.len() as u32 + line_clear_delay(lines_cleared, perfect_clear) + 7,
         b2b: match (lines_cleared, spin) {
             (0, _) => b2b,
             (4, _) => true,
