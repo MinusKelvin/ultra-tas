@@ -94,7 +94,7 @@ fn generate_batches() {
                 &mut vec![],
                 pcf::BitBoard(0),
                 &mut combo.iter().map(|p| p.0).collect(),
-                &mut |order, score, time| add(&normal_db, order, score, time),
+                &mut |order, score, time, b2b| add(&normal_db, order, score, time, b2b),
                 0,
                 0,
                 false,
@@ -103,7 +103,7 @@ fn generate_batches() {
                 &mut vec![],
                 pcf::BitBoard(0),
                 &mut combo.iter().map(|p| p.0).collect(),
-                &mut |order, score, time| add(&b2b_db, order, score, time),
+                &mut |order, score, time, b2b| add(&b2b_db, order, score, time, b2b),
                 0,
                 0,
                 true,
@@ -246,13 +246,29 @@ impl PartialOrd for PieceOrder {
 #[repr(C)]
 struct Entry {
     score: u16,
-    time: u16,
+    time_and_b2b: u16,
     placements: [u8; 10],
 }
 
 impl Entry {
+    fn new(score: u16, time: u16, b2b: bool, placements: [u8; 10]) -> Self {
+        Entry {
+            score,
+            placements,
+            time_and_b2b: time | (b2b as u16) << 15,
+        }
+    }
+
     fn dominates(&self, other: &Entry) -> bool {
-        self.score >= other.score && self.time <= other.time
+        self.b2b() == other.b2b() && self.score >= other.score && self.time() <= other.time()
+    }
+
+    fn time(&self) -> u16 {
+        self.time_and_b2b & 0x7FFF
+    }
+
+    fn b2b(&self) -> bool {
+        self.time_and_b2b & 0x8000 != 0
     }
 }
 
@@ -261,6 +277,7 @@ fn add(
     soln: &[Placement],
     score: u32,
     time: u32,
+    b2b: bool,
 ) {
     let pieces = soln
         .iter()
@@ -276,11 +293,7 @@ fn add(
         .into_inner()
         .unwrap_or_else(|_| unreachable!());
 
-    let entry = Entry {
-        placements: packed,
-        score: score as u16,
-        time: time as u16,
-    };
+    let entry = Entry::new(score as u16, time as u16, b2b, packed);
 
     let mut db = db.lock().unwrap();
     add_to_archive(db.entry(pieces).or_default(), entry);
@@ -300,13 +313,13 @@ fn find_placement_sequences(
     current: &mut Vec<Placement>,
     board: pcf::BitBoard,
     remaining: &mut Vec<pcf::Placement>,
-    found: &mut impl FnMut(&[Placement], u32, u32),
+    found: &mut impl FnMut(&[Placement], u32, u32, bool),
     score: u32,
     time: u32,
     b2b: bool,
 ) {
     if remaining.is_empty() {
-        found(current, score, time);
+        found(current, score, time, b2b);
     }
     for i in 0..remaining.len() {
         let placement = remaining[i];
