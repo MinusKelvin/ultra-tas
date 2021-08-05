@@ -36,7 +36,7 @@ const DATABASE_SIZE: usize = 7usize.pow(10);
 impl Options {
     pub fn run(self) {
         match self {
-            Options::GenBatches { start, end } => generate_batches(start..end),
+            Options::GenBatches { start, end } => generate_batches(start, end),
             Options::BuildDb => {
                 rayon::join(|| build_db(false), || build_db(true));
             }
@@ -44,7 +44,7 @@ impl Options {
     }
 }
 
-fn generate_batches(jobset: Range<usize>) {
+fn generate_batches(start: usize, end: usize) {
     let piece_set = pcf::PIECES.repeat(4).into_iter().collect();
 
     let combos = Mutex::new(vec![]);
@@ -89,7 +89,7 @@ fn generate_batches(jobset: Range<usize>) {
     }
 
     std::fs::create_dir_all("4lbatches").unwrap();
-    for (i, div) in subdivs[jobset].iter().enumerate() {
+    for (i, div) in subdivs.into_iter().enumerate().skip(start).take(end - start) {
         if std::fs::metadata(format!("4lbatches/{}.dat", i)).is_ok() {
             println!("Skipping existing batch {}", i);
             continue;
