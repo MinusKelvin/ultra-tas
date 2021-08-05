@@ -1,8 +1,10 @@
 use std::collections::BTreeMap;
+use std::convert::TryInto;
 use std::io::Write;
 use std::sync::Mutex;
 
 use arrayvec::ArrayVec;
+use bytemuck::{Pod, Zeroable};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -11,9 +13,14 @@ use structopt::StructOpt;
 use crate::data::{line_clear_delay, line_clear_score, Board, Piece, Placement, Rotation, Spin};
 use crate::pathfind::{pathfind, Input};
 
+use self::merge::MergedBatches;
+
+mod merge;
+
 #[derive(StructOpt)]
 pub enum Options {
     GenBatches,
+    BuildDb,
 }
 
 const DATABASE_SIZE: usize = 7usize.pow(10);
@@ -22,6 +29,9 @@ impl Options {
     pub fn run(self) {
         match self {
             Options::GenBatches => generate_batches(),
+            Options::BuildDb => {
+                rayon::join(|| build_db(false), || build_db(true));
+            }
         }
     }
 }
@@ -133,6 +143,66 @@ fn generate_batches() {
     }
 }
 
+fn build_db(b2b: bool) {
+    let mut excess = vec![];
+
+    let mut output = std::io::BufWriter::new(
+        std::fs::File::create(match b2b {
+            false => "4ldb.dat",
+            true => "4ldb-b2b.dat",
+        })
+        .unwrap(),
+    );
+
+    let base_offset = DATABASE_SIZE * 16;
+
+    let mut prev_index = 0;
+    for (pieces, entries) in MergedBatches::new(b2b) {
+        let idx = compute_index(pieces);
+        for _ in prev_index + 1..idx {
+            output.write_all(&[0u8; 16]).unwrap();
+        }
+        prev_index = idx;
+
+        let len: u16 = entries.len().try_into().unwrap();
+        let mut data = [0u8; 16];
+
+        match len {
+            0 => {}
+            1 => {
+                let data: &mut SmallDbEntry = bytemuck::cast_mut(&mut data);
+                data.len = len;
+                data.entry = entries[0];
+            }
+            _ => {
+                let data: &mut LargeDbEntry = bytemuck::cast_mut(&mut data);
+                data.len = len;
+                data.offset = (base_offset + excess.len() * std::mem::size_of::<Entry>()) as u64;
+                excess.extend_from_slice(&entries);
+            }
+        }
+
+        output.write_all(&data).unwrap();
+    }
+
+    output.write_all(bytemuck::cast_slice(&excess)).unwrap();
+}
+
+#[derive(Copy, Clone, Pod, Zeroable)]
+#[repr(C)]
+struct SmallDbEntry {
+    len: u16,
+    entry: Entry,
+}
+
+#[derive(Copy, Clone, Pod, Zeroable)]
+#[repr(C)]
+struct LargeDbEntry {
+    len: u16,
+    _padding: [u8; 6],
+    offset: u64,
+}
+
 #[derive(PartialEq, Eq)]
 struct PlacementOrd(pcf::Placement);
 
@@ -172,7 +242,8 @@ impl PartialOrd for PieceOrder {
     }
 }
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, Pod, Zeroable)]
+#[repr(C)]
 struct Entry {
     score: u16,
     time: u16,
