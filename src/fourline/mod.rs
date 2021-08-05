@@ -11,7 +11,9 @@ use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use structopt::StructOpt;
 
-use crate::data::{line_clear_delay, line_clear_score, Board, Piece, Placement, Rotation, Spin};
+use crate::data::{
+    line_clear_delay, line_clear_score, Board, Piece, Placement, Rotation, Spin, SPAWN_DELAY,
+};
 use crate::pathfind::{pathfind, Input};
 
 use self::merge::MergedBatches;
@@ -34,9 +36,7 @@ const DATABASE_SIZE: usize = 7usize.pow(10);
 impl Options {
     pub fn run(self) {
         match self {
-            Options::GenBatches {
-                start, end
-            } => generate_batches(start..end),
+            Options::GenBatches { start, end } => generate_batches(start..end),
             Options::BuildDb => {
                 rayon::join(|| build_db(false), || build_db(true));
             }
@@ -91,6 +91,7 @@ fn generate_batches(jobset: Range<usize>) {
     std::fs::create_dir_all("4lbatches").unwrap();
     for (i, div) in subdivs[jobset].iter().enumerate() {
         if std::fs::metadata(format!("4lbatches/{}.dat", i)).is_ok() {
+            println!("Skipping existing batch {}", i);
             continue;
         }
 
@@ -120,11 +121,8 @@ fn generate_batches(jobset: Range<usize>) {
         println!("Batch {} took {:.2?}", i, t.elapsed());
 
         let t = std::time::Instant::now();
-        let mut into = zstd::Encoder::new(
-            std::fs::File::create(format!("4lbatches/{}-b2b.dat", i)).unwrap(),
-            9,
-        )
-        .unwrap();
+        let mut into =
+            zstd::Encoder::new(std::fs::File::create("4lbatches/tmp.dat").unwrap(), 9).unwrap();
         into.multithread(16).unwrap();
         for v in b2b_db.into_inner().unwrap() {
             let buf = bincode::serialize(&v).unwrap();
@@ -132,14 +130,12 @@ fn generate_batches(jobset: Range<usize>) {
             into.write_all(&buf).unwrap();
         }
         into.finish().unwrap();
+        std::fs::rename("4lbatches/tmp.dat", format!("4lbatches/{}-b2b.dat", i)).unwrap();
         println!("Saved b2b in {:.2?}", t.elapsed());
 
         let t = std::time::Instant::now();
-        let mut into = zstd::Encoder::new(
-            std::fs::File::create(format!("4lbatches/{}.dat", i)).unwrap(),
-            9,
-        )
-        .unwrap();
+        let mut into =
+            zstd::Encoder::new(std::fs::File::create("4lbatches/tmp.dat").unwrap(), 9).unwrap();
         into.multithread(16).unwrap();
         for v in normal_db.into_inner().unwrap() {
             let buf = bincode::serialize(&v).unwrap();
@@ -147,6 +143,7 @@ fn generate_batches(jobset: Range<usize>) {
             into.write_all(&buf).unwrap();
         }
         into.finish().unwrap();
+        std::fs::rename("4lbatches/tmp.dat", format!("4lbatches/{}.dat", i)).unwrap();
         println!("Saved normal in {:.2?}", t.elapsed());
     }
 }
@@ -418,7 +415,7 @@ fn evaluate(b: pcf::BitBoard, place: Placement, b2b: bool) -> Option<PlacementEv
 
     Some(PlacementEvaluation {
         score: movement_score + line_clear_score(lines_cleared, perfect_clear, b2b, spin),
-        time: movements.len() as u32 + line_clear_delay(lines_cleared, perfect_clear) + 7,
+        time: movements.len() as u32 + line_clear_delay(lines_cleared, perfect_clear) + SPAWN_DELAY,
         b2b: match (lines_cleared, spin) {
             (0, _) => b2b,
             (4, _) => true,
