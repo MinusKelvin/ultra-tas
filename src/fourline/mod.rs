@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::io::Write;
-use std::ops::Range;
 use std::sync::Mutex;
 
 use arrayvec::ArrayVec;
@@ -149,48 +148,56 @@ fn generate_batches(start: usize, end: usize) {
 }
 
 fn build_db(b2b: bool) {
-    let mut excess = vec![];
-
-    let mut output = std::io::BufWriter::new(
+    let mut index = std::io::BufWriter::new(
         std::fs::File::create(match b2b {
-            false => "4ldb.dat",
-            true => "4ldb-b2b.dat",
+            false => "4ldb-index.dat",
+            true => "4ldb-b2b-index.dat",
+        })
+        .unwrap(),
+    );
+    let mut data = std::io::BufWriter::new(
+        std::fs::File::create(match b2b {
+            false => "4ldb-data.dat",
+            true => "4ldb-b2b-data.dat",
         })
         .unwrap(),
     );
 
-    let base_offset = DATABASE_SIZE * 16;
-
+    let mut data_offset = 0;
     let mut prev_index = 0;
     for (pieces, entries) in MergedBatches::new(b2b) {
         let idx = compute_index(pieces);
         for _ in prev_index + 1..idx {
-            output.write_all(&[0u8; 16]).unwrap();
+            index.write_all(&[0u8; 16]).unwrap();
+        }
+        if prev_index / 282475 < idx / 282475 {
+            println!("{:.1}%{}", idx as f64 / 2824752.49, if b2b { " - b2b" } else { "" });
         }
         prev_index = idx;
 
         let len: u16 = entries.len().try_into().unwrap();
-        let mut data = [0u8; 16];
+        let mut bytes = [0u8; 16];
 
         match len {
             0 => {}
             1 => {
-                let data: &mut SmallDbEntry = bytemuck::cast_mut(&mut data);
-                data.len = len;
-                data.entry = entries[0];
+                let entry: &mut SmallDbEntry = bytemuck::cast_mut(&mut bytes);
+                entry.len = len;
+                entry.entry = entries[0];
             }
             _ => {
-                let data: &mut LargeDbEntry = bytemuck::cast_mut(&mut data);
-                data.len = len;
-                data.offset = (base_offset + excess.len() * std::mem::size_of::<Entry>()) as u64;
-                excess.extend_from_slice(&entries);
+                let entry: &mut LargeDbEntry = bytemuck::cast_mut(&mut bytes);
+                entry.len = len;
+                entry.offset = data_offset;
+
+                let data_bytes = bytemuck::cast_slice(&entries);
+                data.write_all(data_bytes).unwrap();
+                data_offset += data_bytes.len() as u64;
             }
         }
 
-        output.write_all(&data).unwrap();
+        index.write_all(&bytes).unwrap();
     }
-
-    output.write_all(bytemuck::cast_slice(&excess)).unwrap();
 }
 
 #[derive(Copy, Clone, Pod, Zeroable)]
