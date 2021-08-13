@@ -13,11 +13,15 @@ use structopt::StructOpt;
 use crate::data::{
     line_clear_delay, line_clear_score, Board, Piece, Placement, Rotation, Spin, SPAWN_DELAY,
 };
+use crate::parse_seq;
 use crate::pathfind::{pathfind, Input};
 
 use self::merge::MergedBatches;
 
+mod db;
 mod merge;
+
+pub use self::db::FourLineDb;
 
 #[derive(StructOpt)]
 pub enum Options {
@@ -28,9 +32,12 @@ pub enum Options {
         end: usize,
     },
     BuildDb,
+    Lookup {
+        seq: String,
+        #[structopt(long)]
+        b2b: bool,
+    },
 }
-
-const DATABASE_SIZE: usize = 7usize.pow(10);
 
 impl Options {
     pub fn run(self) {
@@ -38,6 +45,20 @@ impl Options {
             Options::GenBatches { start, end } => generate_batches(start, end),
             Options::BuildDb => {
                 rayon::join(|| build_db(false), || build_db(true));
+            }
+            Options::Lookup { seq, b2b } => {
+                let r = parse_seq(&seq).unwrap();
+                if r.len() != 10 {
+                    panic!("bad length");
+                }
+                let seq = r.try_into().unwrap();
+                tokio::runtime::Runtime::new().unwrap().block_on(async {
+                    let t = std::time::Instant::now();
+                    let mut db = db::FourLineDb::open(b2b).await;
+                    let results = db.query(seq).await;
+                    println!("{:#?}", results);
+                    println!("{:?}", t.elapsed());
+                });
             }
         }
     }
@@ -88,7 +109,12 @@ fn generate_batches(start: usize, end: usize) {
     }
 
     std::fs::create_dir_all("4lbatches").unwrap();
-    for (i, div) in subdivs.into_iter().enumerate().skip(start).take(end - start) {
+    for (i, div) in subdivs
+        .into_iter()
+        .enumerate()
+        .skip(start)
+        .take(end - start)
+    {
         if std::fs::metadata(format!("4lbatches/{}.dat", i)).is_ok() {
             println!("Skipping existing batch {}", i);
             continue;
@@ -171,7 +197,11 @@ fn build_db(b2b: bool) {
             index.write_all(&[0u8; 16]).unwrap();
         }
         if prev_index / 282475 < idx / 282475 {
-            println!("{:.1}%{}", idx as f64 / 2824752.49, if b2b { " - b2b" } else { "" });
+            println!(
+                "{:.1}%{}",
+                idx as f64 / 2824752.49,
+                if b2b { " - b2b" } else { "" }
+            );
         }
         prev_index = idx;
 
