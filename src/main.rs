@@ -1,5 +1,6 @@
 use std::mem::MaybeUninit;
 
+use data::Piece;
 use structopt::StructOpt;
 
 mod data;
@@ -50,4 +51,24 @@ impl<A, B, const N: usize> ArrayExt<A, B> for [A; N] {
         }
         unsafe { std::mem::transmute_copy(&result) }
     }
+}
+
+fn parse_seq(p: &str) -> Result<Vec<Piece>, &'static str> {
+    p.chars().try_fold(vec![], |mut v, c| {
+        v.push(parse_piece(c)?);
+        Ok(v)
+    })
+}
+
+fn parse_piece(c: char) -> Result<Piece, &'static str> {
+    Ok(match c {
+        'I' => Piece::I,
+        'O' => Piece::O,
+        'T' => Piece::T,
+        'L' => Piece::L,
+        'J' => Piece::J,
+        'S' => Piece::S,
+        'Z' => Piece::Z,
+        _ => return Err("invalid piece"),
+    })
 }

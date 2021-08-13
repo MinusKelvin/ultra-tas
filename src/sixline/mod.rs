@@ -7,10 +7,13 @@ use enumset::EnumSet;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use structopt::StructOpt;
 
+use crate::{data::*, parse_seq};
+
+mod db;
 mod merge;
 mod search;
 
-use crate::data::*;
+pub use self::db::SixLineDb;
 
 #[derive(StructOpt)]
 pub enum Options {
@@ -18,6 +21,7 @@ pub enum Options {
     ProcessBatches,
     CountStats,
     BuildDatabase,
+    Lookup { seq: String },
 }
 
 impl Options {
@@ -27,6 +31,20 @@ impl Options {
             Options::ProcessBatches => process_batches(),
             Options::CountStats => count_stats(),
             Options::BuildDatabase => build_db(),
+            Options::Lookup { seq } => {
+                let r = parse_seq(&seq).unwrap();
+                if r.len() != 15 {
+                    panic!("bad length");
+                }
+                let seq = r.try_into().unwrap();
+                tokio::runtime::Runtime::new().unwrap().block_on(async {
+                    let t = std::time::Instant::now();
+                    let mut db = db::SixLineDb::open().await;
+                    let results = db.query(seq).await;
+                    println!("{:#?}", results);
+                    println!("{:?}", t.elapsed());
+                });
+            }
         }
     }
 }
