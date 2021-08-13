@@ -206,17 +206,16 @@ fn build_db(b2b: bool) {
         prev_index = idx;
 
         let len: u16 = entries.len().try_into().unwrap();
-        let mut bytes = [0u8; 16];
+        let mut entry = LargeDbEntry::zeroed();
 
         match len {
             0 => {}
             1 => {
-                let entry: &mut SmallDbEntry = bytemuck::cast_mut(&mut bytes);
+                let entry: &mut SmallDbEntry = bytemuck::cast_mut(&mut entry);
                 entry.len = len;
                 entry.entry = entries[0];
             }
             _ => {
-                let entry: &mut LargeDbEntry = bytemuck::cast_mut(&mut bytes);
                 entry.len = len;
                 entry.offset = data_offset;
 
@@ -226,7 +225,11 @@ fn build_db(b2b: bool) {
             }
         }
 
-        index.write_all(&bytes).unwrap();
+        index.write_all(bytemuck::bytes_of(&entry)).unwrap();
+    }
+
+    for _ in prev_index..7usize.pow(10) {
+        index.write_all(&[0; 16]).unwrap();
     }
 }
 
