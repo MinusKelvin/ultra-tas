@@ -190,20 +190,20 @@ fn build_db(b2b: bool) {
     );
 
     let mut data_offset = 0;
-    let mut prev_index = 0;
+    let mut next_index = 0;
     for (pieces, entries) in MergedBatches::new(b2b) {
         let idx = compute_index(pieces);
-        for _ in prev_index + 1..idx {
+        for _ in next_index..idx {
             index.write_all(&[0u8; 16]).unwrap();
         }
-        if prev_index / 282475 < idx / 282475 {
+        if next_index / 282475 < idx / 282475 {
             println!(
                 "{:.1}%{}",
                 idx as f64 / 2824752.49,
                 if b2b { " - b2b" } else { "" }
             );
         }
-        prev_index = idx;
+        next_index = idx + 1;
 
         let len: u16 = entries.len().try_into().unwrap();
         let mut entry = LargeDbEntry::zeroed();
@@ -228,7 +228,7 @@ fn build_db(b2b: bool) {
         index.write_all(bytemuck::bytes_of(&entry)).unwrap();
     }
 
-    for _ in prev_index..7usize.pow(10) {
+    for _ in next_index..7usize.pow(10) {
         index.write_all(&[0; 16]).unwrap();
     }
 }
