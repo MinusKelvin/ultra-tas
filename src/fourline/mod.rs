@@ -196,7 +196,7 @@ fn build_db(b2b: bool) {
         for _ in next_index..idx {
             index.write_all(&[0u8; 16]).unwrap();
         }
-        if next_index / 282475 < idx / 282475 {
+        if next_index / 282475 < (idx+1) / 282475 {
             println!(
                 "{:.1}%{}",
                 idx as f64 / 2824752.49,
