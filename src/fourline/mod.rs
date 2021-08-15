@@ -307,7 +307,7 @@ impl Entry {
     }
 
     fn dominates(&self, other: &Entry) -> bool {
-        self.b2b() == other.b2b() && self.score >= other.score && self.time() <= other.time()
+        self.score >= other.score && self.time() <= other.time() && self.b2b() >= other.b2b()
     }
 
     fn time(&self) -> u16 {
