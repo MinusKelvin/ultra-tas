@@ -132,6 +132,7 @@ fn generate_batches(start: usize, end: usize) {
                 0,
                 0,
                 false,
+                0,
             );
             find_placement_sequences(
                 &mut vec![],
@@ -141,6 +142,7 @@ fn generate_batches(start: usize, end: usize) {
                 0,
                 0,
                 true,
+                0,
             );
         });
         println!("Batch {} took {:.2?}", i, t.elapsed());
@@ -196,7 +198,7 @@ fn build_db(b2b: bool) {
         for _ in next_index..idx {
             index.write_all(&[0u8; 16]).unwrap();
         }
-        if next_index / 282475 < (idx+1) / 282475 {
+        if next_index / 282475 < (idx + 1) / 282475 {
             println!(
                 "{:.1}%{}",
                 idx as f64 / 2824752.49,
@@ -362,6 +364,7 @@ fn find_placement_sequences(
     score: u32,
     time: u32,
     b2b: bool,
+    combo: u32,
 ) {
     if remaining.is_empty() {
         found(current, score, time, b2b);
@@ -375,7 +378,7 @@ fn find_placement_sequences(
         let cleared = board.lines_cleared();
 
         let place = placement.srs_piece(board)[0].into();
-        let info = match evaluate(cleared, place, b2b) {
+        let info = match evaluate(cleared, place, b2b, combo) {
             Some(info) => info,
             None => continue,
         };
@@ -393,6 +396,7 @@ fn find_placement_sequences(
             score + info.score,
             time + info.time,
             info.b2b,
+            info.combo,
         );
 
         current.pop();
@@ -402,7 +406,12 @@ fn find_placement_sequences(
     }
 }
 
-fn evaluate(b: pcf::BitBoard, place: Placement, b2b: bool) -> Option<PlacementEvaluation> {
+fn evaluate(
+    b: pcf::BitBoard,
+    place: Placement,
+    b2b: bool,
+    combo: u32,
+) -> Option<PlacementEvaluation> {
     let mut board = Board([0; 10]);
     for y in 0..6 {
         for x in 0..10 {
@@ -437,7 +446,7 @@ fn evaluate(b: pcf::BitBoard, place: Placement, b2b: bool) -> Option<PlacementEv
             .filter(|&(x, y)| board.is_filled((x + place.x, y + place.y)))
             .count();
 
-        if mini_corners + other_corners > 3 {
+        if mini_corners + other_corners >= 3 {
             if mini_corners == 2 {
                 spin = Spin::Full;
             } else {
@@ -452,9 +461,16 @@ fn evaluate(b: pcf::BitBoard, place: Placement, b2b: bool) -> Option<PlacementEv
 
     let perfect_clear = board.0 == [board.line_clears(); 10];
     let lines_cleared = board.line_clears().count_ones();
+    let combo = match lines_cleared == 0 {
+        true => 0,
+        false => combo + 1,
+    };
+    let combo_score = (combo.max(1) - 1) * 50;
 
     Some(PlacementEvaluation {
-        score: movement_score + line_clear_score(lines_cleared, perfect_clear, b2b, spin),
+        score: movement_score
+            + line_clear_score(lines_cleared, perfect_clear, b2b, spin)
+            + combo_score,
         time: movements.len() as u32 + line_clear_delay(lines_cleared, perfect_clear) + SPAWN_DELAY,
         b2b: match (lines_cleared, spin) {
             (0, _) => b2b,
@@ -462,6 +478,7 @@ fn evaluate(b: pcf::BitBoard, place: Placement, b2b: bool) -> Option<PlacementEv
             (_, Spin::Nope) => false,
             _ => true,
         },
+        combo,
     })
 }
 
@@ -469,6 +486,7 @@ struct PlacementEvaluation {
     score: u32,
     time: u32,
     b2b: bool,
+    combo: u32,
 }
 
 impl From<pcf::SrsPiece> for Placement {
