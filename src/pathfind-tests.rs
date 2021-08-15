@@ -92,7 +92,7 @@ fn check_tucks() {
             }
         )
         .map(|(s, v)| (s, v.len())),
-        Some((19, 19 * 3 + 4 * 2))
+        Some((19, 19 * 3 + 4 * 2 + 1))
     );
     assert_eq!(
         pathfind(
@@ -105,7 +105,7 @@ fn check_tucks() {
             }
         )
         .map(|(s, v)| (s, v.len())),
-        Some((19, 19 * 3 + 3 * 2))
+        Some((19, 19 * 3 + 3 * 2 + 1))
     );
 
     let blocking = Board([0, 0, 0, 0, 0, 0, 0, 0, 0, 0b1000]);
@@ -120,7 +120,7 @@ fn check_tucks() {
             }
         )
         .map(|(s, v)| (s, v.len())),
-        Some((18, 18 * 3 + 5 * 2))
+        Some((18, 18 * 3 + 5 * 2 + 1))
     );
 }
 
@@ -143,7 +143,7 @@ fn spins() {
             }
         )
         .map(|(s, v)| (s, v.len())),
-        Some((17, 17 * 3 + 4 * 2 + 1))
+        Some((17, 17 * 3 + 4 * 2 + 1 + 1))
     );
 
     assert_eq!(
@@ -157,7 +157,7 @@ fn spins() {
             }
         )
         .map(|(s, v)| (s, v.len())),
-        Some((17, 17 * 3 + 1))
+        Some((17, 17 * 3 + 1 + 1))
     );
 
     assert_eq!(
@@ -171,7 +171,7 @@ fn spins() {
             }
         )
         .map(|(s, v)| (s, v.len())),
-        Some((18, 18 * 3 + 3 * 2))
+        Some((18, 18 * 3 + 3 * 2 + 1))
     );
 
     assert_eq!(
@@ -185,7 +185,7 @@ fn spins() {
             }
         )
         .map(|(s, v)| (s, v.len())),
-        Some((18, 18 * 3 + 1 * 2 + 1))
+        Some((18, 18 * 3 + 1 * 2 + 1 + 1))
     );
 }
 
@@ -211,7 +211,7 @@ fn tst() {
             }
         )
         .map(|(s, v)| (s, v.len())),
-        Some((16, 16 * 3 + 3 * 2))
+        Some((16, 16 * 3 + 3 * 2 + 1))
     );
 }
 
@@ -235,7 +235,7 @@ fn same_frame_spin_tuck() {
             }
         )
         .map(|(s, v)| (s, v.len())),
-        Some((18, 18 * 3 + 3 * 2))
+        Some((18, 18 * 3 + 3 * 2 + 1))
     );
 }
 
@@ -258,7 +258,7 @@ fn intermediate_drop() {
             }
         )
         .map(|(s, v)| (s, v.len())),
-        Some((2 + 16, 16 * 3 + 3 * 2 + 1))
+        Some((2 + 16, 16 * 3 + 3 * 2 + 1 + 1))
     );
     assert_eq!(
         pathfind(
@@ -271,7 +271,7 @@ fn intermediate_drop() {
             }
         )
         .map(|(s, v)| (s, v.len())),
-        Some((17, 17 * 3 + 4 * 2 + 1))
+        Some((17, 17 * 3 + 4 * 2 + 1 + 1))
     );
 }
 
@@ -293,7 +293,7 @@ fn double_rotate() {
             }
         )
         .map(|(s, v)| (s, v.len())),
-        Some((18, 18 * 3 + 3 * 2))
+        Some((18, 18 * 3 + 3 * 2 + 1))
     );
     assert_eq!(
         pathfind(
@@ -306,6 +306,6 @@ fn double_rotate() {
             }
         )
         .map(|(s, v)| (s, v.len())),
-        Some((18, 18 * 3 + 3 * 2))
+        Some((18, 18 * 3 + 3 * 2 + 1))
     );
 }

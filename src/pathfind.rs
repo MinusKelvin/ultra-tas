@@ -14,6 +14,7 @@ pub enum Input {
     Ccw,
     Softdrop,
     HardDrop,
+    Hold,
 }
 
 pub fn pathfind(board: &Board, placement: Placement) -> Option<(u32, Vec<EnumSet<Input>>)> {
@@ -311,7 +312,7 @@ fn add_hard_drop(path: &mut Vec<EnumSet<Input>>) {
 }
 
 fn add_soft_drop(path: &mut Vec<EnumSet<Input>>, cells: usize) {
-    let mut required_movements = (0..cells * 3).map(|_| EnumSet::only(Input::Softdrop));
+    let mut required_movements = (0..cells * 3 + 1).map(|_| EnumSet::only(Input::Softdrop));
     let mut prev_couldnt_drop = false;
     for existing in path.iter_mut() {
         if !prev_couldnt_drop && existing.is_disjoint(CANT_DROP) {
