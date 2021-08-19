@@ -7,6 +7,7 @@ mod data;
 mod fourline;
 mod pathfind;
 mod sixline;
+mod solve;
 
 #[derive(StructOpt)]
 pub enum Command {
@@ -14,12 +15,15 @@ pub enum Command {
     SixLine(sixline::Options),
     /// 4-line PC database generation commands
     FourLine(fourline::Options),
+    /// Solve an Ultra piece sequence
+    Solve(solve::Options)
 }
 
 pub fn main() {
     match Command::from_args() {
         Command::SixLine(subcommand) => subcommand.run(),
         Command::FourLine(subcommand) => subcommand.run(),
+        Command::Solve(subcommand) => subcommand.run(),
     }
 }
 
