@@ -1,9 +1,9 @@
 use std::collections::VecDeque;
 use std::convert::TryInto;
+use std::io::Write;
 
 use enumset::EnumSet;
 use structopt::StructOpt;
-use tokio::io::AsyncWriteExt;
 
 use crate::data::{line_clear_delay, Board, Piece, Placement, SPAWN_DELAY};
 use crate::fourline::FourLineDb;
@@ -18,17 +18,12 @@ pub struct Options {}
 
 impl Options {
     pub fn run(self) {
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(16)
-            .build()
-            .unwrap();
-
         let handles: Vec<_> = (0..WORKERS)
             .map(|base| {
-                rt.spawn(async move {
+                std::thread::spawn(move || {
                     for seed in (base..NUM_SEEDS).step_by(WORKERS as usize) {
                         let queue = gen_queue_ppt1(seed);
-                        let mut finish_states = solve_sequence(&queue).await;
+                        let mut finish_states = solve_sequence(&queue);
 
                         let mut max = finish_states.pop().unwrap();
                         for state in finish_states {
@@ -44,7 +39,7 @@ impl Options {
                             max.time,
                             result.len()
                         );
-                        write_tas(seed, &result[2..]).await;
+                        write_tas(seed, &result[2..]);
 
                         break;
                     }
@@ -52,7 +47,7 @@ impl Options {
             })
             .collect();
         for handle in handles {
-            rt.block_on(handle).unwrap();
+            handle.join().unwrap();
         }
     }
 }
@@ -121,45 +116,35 @@ fn input_sequence(
     inputs
 }
 
-async fn write_tas(seed: u32, inputs: &[(EnumSet<Input>, Option<u32>)]) {
-    let mut file = tokio::io::BufWriter::new(
-        tokio::fs::File::create(format!("{:04X}", seed))
-            .await
-            .unwrap(),
-    );
+fn write_tas(seed: u32, inputs: &[(EnumSet<Input>, Option<u32>)]) {
+    let mut file = std::io::BufWriter::new(std::fs::File::create(format!("{:04X}", seed)).unwrap());
 
-    file.write(format!("{:04X}\n", seed).as_bytes())
-        .await
-        .unwrap();
+    file.write(format!("{:04X}\n", seed).as_bytes()).unwrap();
     for &(frame, score) in inputs {
         if frame.is_empty() {
-            file.write_all(b"_").await.unwrap();
+            file.write_all(b"_").unwrap();
         }
         for input in frame {
             match input {
-                Input::Left => file.write_all(b"<").await.unwrap(),
-                Input::Right => file.write_all(b">").await.unwrap(),
-                Input::Cw => file.write_all(b"R").await.unwrap(),
-                Input::Ccw => file.write_all(b"L").await.unwrap(),
-                Input::Softdrop => file.write_all(b"v").await.unwrap(),
-                Input::HardDrop => file.write_all(b"D").await.unwrap(),
-                Input::Hold => file.write_all(b"H").await.unwrap(),
+                Input::Left => file.write_all(b"<").unwrap(),
+                Input::Right => file.write_all(b">").unwrap(),
+                Input::Cw => file.write_all(b"R").unwrap(),
+                Input::Ccw => file.write_all(b"L").unwrap(),
+                Input::Softdrop => file.write_all(b"v").unwrap(),
+                Input::HardDrop => file.write_all(b"D").unwrap(),
+                Input::Hold => file.write_all(b"H").unwrap(),
             };
         }
         if let Some(score) = score {
-            file.write_all(b" ").await.unwrap();
-            file.write_all(format!("{}", score).as_bytes())
-                .await
-                .unwrap();
+            file.write_all(b" ").unwrap();
+            file.write_all(format!("{}", score).as_bytes()).unwrap();
         }
-        file.write_all(b"\n").await.unwrap();
+        file.write_all(b"\n").unwrap();
     }
-
-    file.shutdown().await.unwrap();
 }
 
-async fn solve_sequence(queue: &[Piece]) -> Vec<SolveState> {
-    let mut fourline_dbs = [FourLineDb::open(false).await, FourLineDb::open(true).await];
+fn solve_sequence(queue: &[Piece]) -> Vec<SolveState> {
+    let mut fourline_dbs = [FourLineDb::open(false), FourLineDb::open(true)];
 
     let mut start_layer = Layer::default();
     start_layer.empty_hold.push(SolveState::default());
@@ -180,8 +165,7 @@ async fn solve_sequence(queue: &[Piece]) -> Vec<SolveState> {
                 Some(p),
                 &layer.hold_piece[p as usize],
                 &queue[1..],
-            )
-            .await;
+            );
         }
         advance(
             &mut fourline_dbs,
@@ -190,8 +174,7 @@ async fn solve_sequence(queue: &[Piece]) -> Vec<SolveState> {
             None,
             &layer.empty_hold,
             queue,
-        )
-        .await;
+        );
 
         queue = &queue[5..];
         assert!(queue.len() > 16);
@@ -219,7 +202,7 @@ async fn solve_sequence(queue: &[Piece]) -> Vec<SolveState> {
     finish_states
 }
 
-async fn advance(
+fn advance(
     &mut [ref mut normal_db, ref mut b2b_db]: &mut [FourLineDb; 2],
     finish_states: &mut Vec<SolveState>,
     layers: &mut VecDeque<Layer>,
@@ -246,11 +229,11 @@ async fn advance(
         cache: Option<Vec<(u32, u32, bool, Option<Piece>, [Placement; 10])>>,
     }
     impl EdgeSet<'_> {
-        async fn get(&mut self) -> &[(u32, u32, bool, Option<Piece>, [Placement; 10])] {
+        fn get(&mut self) -> &[(u32, u32, bool, Option<Piece>, [Placement; 10])] {
             if self.cache.is_none() {
                 let mut edges = vec![];
                 for &(extra_hold_cost, hold, seq) in self.seqs {
-                    for entry in self.db.query(seq).await {
+                    for entry in self.db.query(seq) {
                         edges.push((
                             entry.score,
                             entry.time + extra_hold_cost,
@@ -281,7 +264,7 @@ async fn advance(
 
     for start in starts {
         let mut had_successor = false;
-        for &(score, time, b2b, hold, placements) in edges[start.b2b as usize].get().await {
+        for &(score, time, b2b, hold, placements) in edges[start.b2b as usize].get() {
             if start.time + time > ULTRA_LENGTH {
                 continue;
             }

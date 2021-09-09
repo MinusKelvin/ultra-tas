@@ -52,13 +52,11 @@ impl Options {
                     panic!("bad length");
                 }
                 let seq = r.try_into().unwrap();
-                tokio::runtime::Runtime::new().unwrap().block_on(async {
-                    let t = std::time::Instant::now();
-                    let mut db = db::FourLineDb::open(b2b).await;
-                    let results = db.query(seq).await;
-                    println!("{:#?}", results);
-                    println!("{:?}", t.elapsed());
-                });
+                let t = std::time::Instant::now();
+                let mut db = db::FourLineDb::open(b2b);
+                let results = db.query(seq);
+                println!("{:#?}", results);
+                println!("{:?}", t.elapsed());
             }
         }
     }
