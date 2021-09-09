@@ -1,7 +1,9 @@
 use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::io::Write;
+use std::rc::Rc;
 
+use arrayvec::ArrayVec;
 use enumset::EnumSet;
 use structopt::StructOpt;
 
@@ -31,7 +33,18 @@ impl Options {
                                 max = state;
                             }
                         }
-                        let result = input_sequence(&max.placement_sequence, &queue);
+
+                        let mut pieces = vec![];
+                        let mut seq = max.placement_sequence.as_ref();
+                        while let Some(s) = seq {
+                            pieces.push(&s.placements);
+                            seq = s.next.as_ref();
+                        }
+                        pieces.reverse();
+                        let placement_sequence: Vec<_> =
+                            pieces.into_iter().flatten().copied().collect();
+
+                        let result = input_sequence(&placement_sequence, &queue);
                         println!(
                             "{:04X}: {} points in {} frames ({})",
                             seed,
@@ -57,7 +70,12 @@ struct SolveState {
     score: u32,
     time: u32,
     b2b: bool,
-    placement_sequence: Vec<(Placement, Option<u32>)>,
+    placement_sequence: Option<Rc<PlacementSequenceList>>,
+}
+
+struct PlacementSequenceList {
+    next: Option<Rc<PlacementSequenceList>>,
+    placements: ArrayVec<(Placement, Option<u32>), 15>,
 }
 
 impl SolveState {
@@ -270,13 +288,15 @@ fn advance(
             }
             had_successor = true;
 
-            let mut placement_sequence = start.placement_sequence.clone();
-            placement_sequence.extend(placements.iter().map(|&p| (p, None)));
-            placement_sequence.last_mut().unwrap().1 = Some(start.score + score);
+            let mut placement_sequence = PlacementSequenceList {
+                next: start.placement_sequence.clone(),
+                placements: placements.iter().map(|&p| (p, None)).collect(),
+            };
+            placement_sequence.placements.last_mut().unwrap().1 = Some(start.score + score);
             let result_state = SolveState {
                 score: start.score + score,
                 time: start.time + time,
-                placement_sequence,
+                placement_sequence: Some(Rc::new(placement_sequence)),
                 b2b,
             };
 
