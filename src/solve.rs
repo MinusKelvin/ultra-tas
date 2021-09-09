@@ -11,6 +11,10 @@ use crate::data::{line_clear_delay, Board, Piece, Placement, SPAWN_DELAY};
 use crate::fourline::FourLineDb;
 use crate::pathfind::{pathfind, Input};
 
+use self::archive::{Archive, Dominance};
+
+mod archive;
+
 const NUM_SEEDS: u32 = 1 << 16;
 const ULTRA_LENGTH: u32 = 10803;
 const WORKERS: u32 = 1;
@@ -25,7 +29,7 @@ impl Options {
                 std::thread::spawn(move || {
                     for seed in (base..NUM_SEEDS).step_by(WORKERS as usize) {
                         let queue = gen_queue_ppt1(seed);
-                        let mut finish_states = solve_sequence(&queue);
+                        let mut finish_states: Vec<_> = solve_sequence(&queue).into();
 
                         let mut max = finish_states.pop().unwrap();
                         for state in finish_states {
@@ -78,16 +82,16 @@ struct PlacementSequenceList {
     placements: ArrayVec<(Placement, Option<u32>), 15>,
 }
 
-impl SolveState {
-    fn dominates(&self, other: &Self) -> bool {
+impl Dominance for SolveState {
+    fn covers(&self, other: &Self) -> bool {
         self.score >= other.score && self.time <= other.time && self.b2b >= other.b2b
     }
 }
 
 #[derive(Default)]
 struct Layer {
-    hold_piece: [Vec<SolveState>; 7],
-    empty_hold: Vec<SolveState>,
+    hold_piece: [Archive<SolveState>; 7],
+    empty_hold: Archive<SolveState>,
 }
 
 fn input_sequence(
@@ -161,16 +165,16 @@ fn write_tas(seed: u32, inputs: &[(EnumSet<Input>, Option<u32>)]) {
     }
 }
 
-fn solve_sequence(queue: &[Piece]) -> Vec<SolveState> {
+fn solve_sequence(queue: &[Piece]) -> Archive<SolveState> {
     let mut fourline_dbs = [FourLineDb::open(false), FourLineDb::open(true)];
 
     let mut start_layer = Layer::default();
-    start_layer.empty_hold.push(SolveState::default());
+    start_layer.empty_hold.add(SolveState::default());
 
     let mut layers = VecDeque::new();
     layers.push_back(start_layer);
 
-    let mut finish_states = vec![];
+    let mut finish_states = Archive::new();
 
     let mut queue = queue;
 
@@ -222,10 +226,10 @@ fn solve_sequence(queue: &[Piece]) -> Vec<SolveState> {
 
 fn advance(
     &mut [ref mut normal_db, ref mut b2b_db]: &mut [FourLineDb; 2],
-    finish_states: &mut Vec<SolveState>,
+    finish_states: &mut Archive<SolveState>,
     layers: &mut VecDeque<Layer>,
     hold: Option<Piece>,
-    starts: &Vec<SolveState>,
+    starts: &Archive<SolveState>,
     queue: &[Piece],
 ) {
     if starts.is_empty() {
@@ -280,7 +284,7 @@ fn advance(
         },
     ];
 
-    for start in starts {
+    for start in starts.iter() {
         let mut had_successor = false;
         for &(score, time, b2b, hold, placements) in edges[start.b2b as usize].get() {
             if start.time + time > ULTRA_LENGTH {
@@ -305,19 +309,12 @@ fn advance(
                 Some(p) => &mut layers[1].hold_piece[p as usize],
             };
 
-            add_to_archive(list, result_state);
+            list.add(result_state);
         }
 
         if !had_successor {
-            add_to_archive(finish_states, start.clone());
+            finish_states.add(start.clone());
         }
-    }
-}
-
-fn add_to_archive(archive: &mut Vec<SolveState>, entry: SolveState) {
-    if !archive.iter().any(|e| e.dominates(&entry)) {
-        archive.retain(|e| !entry.dominates(e));
-        archive.push(entry);
     }
 }
 
