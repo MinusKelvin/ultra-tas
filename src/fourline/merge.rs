@@ -11,20 +11,18 @@ use super::Entry;
 
 pub(super) struct MergedBatches {
     src: Peekable<Merger>,
-    b2b: bool,
 }
 
 impl MergedBatches {
     pub fn new(b2b: bool) -> Self {
         MergedBatches {
             src: Merger::new(b2b).peekable(),
-            b2b,
         }
     }
 }
 
 impl Iterator for MergedBatches {
-    type Item = ([Piece; 10], SmallVec<[Entry; 1]>);
+    type Item = ([Piece; 10], Vec<Entry>);
 
     fn next(&mut self) -> Option<Self::Item> {
         let key = self.src.peek()?.0;
@@ -34,16 +32,7 @@ impl Iterator for MergedBatches {
                 archive.add(entry);
             }
         }
-        let mut result = SmallVec::with_capacity(archive.len());
-        for mut v in archive {
-            if self.b2b {
-                v.time_and_flags |= 1 << 13;
-            } else {
-                v.time_and_flags |= 1 << 14;
-            }
-            result.push(v);
-        }
-        Some((key, result))
+        Some((key, archive.into()))
     }
 }
 

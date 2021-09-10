@@ -188,7 +188,7 @@ fn build_db() {
         // collate entries
         let mut entries = vec![];
         for mut entry in nob2b_entries {
-            b2b_entries.retain(|&mut v| {
+            b2b_entries.retain(|&v| {
                 if v == entry {
                     entry.mark_valid_b2b();
                     false
