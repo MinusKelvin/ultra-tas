@@ -4,18 +4,21 @@ use std::iter::Peekable;
 
 use smallvec::SmallVec;
 
+use crate::archive::Archive;
 use crate::data::*;
 
-use super::{Entry, add_to_archive};
+use super::Entry;
 
 pub(super) struct MergedBatches {
     src: Peekable<Merger>,
+    b2b: bool,
 }
 
 impl MergedBatches {
     pub fn new(b2b: bool) -> Self {
         MergedBatches {
             src: Merger::new(b2b).peekable(),
+            b2b,
         }
     }
 }
@@ -24,13 +27,23 @@ impl Iterator for MergedBatches {
     type Item = ([Piece; 10], SmallVec<[Entry; 1]>);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (key, mut value) = self.src.next()?;
+        let key = self.src.peek()?.0;
+        let mut archive = Archive::new();
         while let Some((_, v)) = self.src.next_if(|&(k, _)| k == key) {
             for entry in v {
-                add_to_archive(&mut value, entry);
+                archive.add(entry);
             }
         }
-        Some((key, value))
+        let mut result = SmallVec::with_capacity(archive.len());
+        for mut v in archive {
+            if self.b2b {
+                v.time_and_flags |= 1 << 13;
+            } else {
+                v.time_and_flags |= 1 << 14;
+            }
+            result.push(v);
+        }
+        Some((key, result))
     }
 }
 

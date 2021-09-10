@@ -7,13 +7,10 @@ use arrayvec::ArrayVec;
 use enumset::EnumSet;
 use structopt::StructOpt;
 
+use crate::archive::{Archive, Dominance};
 use crate::data::{line_clear_delay, Board, Piece, Placement, SPAWN_DELAY};
 use crate::fourline::FourLineDb;
 use crate::pathfind::{pathfind, Input};
-
-use self::archive::{Archive, Dominance};
-
-mod archive;
 
 const NUM_SEEDS: u32 = 1 << 16;
 const ULTRA_LENGTH: u32 = 10803;
@@ -171,7 +168,7 @@ fn write_tas(seed: u32, inputs: &[(EnumSet<Input>, Option<u32>)]) {
 }
 
 fn solve_sequence(queue: &[Piece]) -> Archive<SolveState> {
-    let mut fourline_dbs = [FourLineDb::open(false), FourLineDb::open(true)];
+    let mut fourline_db = FourLineDb::open();
 
     let mut start_layer = Layer::default();
     start_layer.empty_hold.add(SolveState::default());
@@ -186,7 +183,7 @@ fn solve_sequence(queue: &[Piece]) -> Archive<SolveState> {
     while let Some(layer) = layers.pop_front() {
         for p in Piece::ALL {
             advance(
-                &mut fourline_dbs,
+                &mut fourline_db,
                 &mut finish_states,
                 &mut layers,
                 Some(p),
@@ -195,7 +192,7 @@ fn solve_sequence(queue: &[Piece]) -> Archive<SolveState> {
             );
         }
         advance(
-            &mut fourline_dbs,
+            &mut fourline_db,
             &mut finish_states,
             &mut layers,
             None,
@@ -230,7 +227,7 @@ fn solve_sequence(queue: &[Piece]) -> Archive<SolveState> {
 }
 
 fn advance(
-    &mut [ref mut normal_db, ref mut b2b_db]: &mut [FourLineDb; 2],
+    fourline_db: &mut FourLineDb,
     finish_states: &mut Archive<SolveState>,
     layers: &mut VecDeque<Layer>,
     hold: Option<Piece>,
@@ -250,49 +247,31 @@ fn advance(
         layers.push_back(Layer::default());
     }
 
-    struct EdgeSet<'a> {
-        db: &'a mut FourLineDb,
-        seqs: &'a [(u32, Option<Piece>, [Piece; 10])],
-        cache: Option<Vec<(u32, u32, bool, Option<Piece>, [Placement; 10])>>,
-    }
-    impl EdgeSet<'_> {
-        fn get(&mut self) -> &[(u32, u32, bool, Option<Piece>, [Placement; 10])] {
-            if self.cache.is_none() {
-                let mut edges = vec![];
-                for &(extra_hold_cost, hold, seq) in self.seqs {
-                    for entry in self.db.query(seq) {
-                        edges.push((
-                            entry.score,
-                            entry.time + extra_hold_cost,
-                            entry.end_b2b,
-                            hold,
-                            entry.placements,
-                        ));
-                    }
-                }
-                self.cache = Some(edges);
-            }
-            self.cache.as_ref().unwrap()
+    let mut edges = vec![];
+    for (extra_hold_cost, hold, seq) in seqs {
+        for mut entry in fourline_db.query(seq) {
+            entry.time += extra_hold_cost;
+            edges.push((
+                entry.score,
+                entry.time + extra_hold_cost,
+                entry.end_b2b,
+                hold,
+                entry.placements,
+                entry.valid_nob2b,
+                entry.valid_b2b,
+            ));
         }
     }
 
-    let mut edges = [
-        EdgeSet {
-            db: normal_db,
-            seqs: &seqs,
-            cache: None,
-        },
-        EdgeSet {
-            db: b2b_db,
-            seqs: &seqs,
-            cache: None,
-        },
-    ];
-
     for start in starts.iter() {
         let mut had_successor = false;
-        for &(score, time, b2b, hold, placements) in edges[start.b2b as usize].get() {
+        for &(score, time, b2b, hold, placements, valid_nob2b, valid_b2b) in &edges {
             if start.time + time > ULTRA_LENGTH {
+                continue;
+            }
+            if start.b2b && !valid_b2b {
+                continue;
+            } else if !start.b2b && !valid_nob2b {
                 continue;
             }
             had_successor = true;

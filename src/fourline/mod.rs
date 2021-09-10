@@ -7,9 +7,9 @@ use arrayvec::ArrayVec;
 use bytemuck::{Pod, Zeroable};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
-use smallvec::SmallVec;
 use structopt::StructOpt;
 
+use crate::archive::{Archive, Dominance};
 use crate::data::{
     line_clear_delay, line_clear_score, Board, Piece, Placement, Rotation, Spin, SPAWN_DELAY,
 };
@@ -34,8 +34,6 @@ pub enum Options {
     BuildDb,
     Lookup {
         seq: String,
-        #[structopt(long)]
-        b2b: bool,
     },
 }
 
@@ -43,17 +41,15 @@ impl Options {
     pub fn run(self) {
         match self {
             Options::GenBatches { start, end } => generate_batches(start, end),
-            Options::BuildDb => {
-                rayon::join(|| build_db(false), || build_db(true));
-            }
-            Options::Lookup { seq, b2b } => {
+            Options::BuildDb => build_db(),
+            Options::Lookup { seq } => {
                 let r = parse_seq(&seq).unwrap();
                 if r.len() != 10 {
                     panic!("bad length");
                 }
                 let seq = r.try_into().unwrap();
                 let t = std::time::Instant::now();
-                let mut db = db::FourLineDb::open(b2b);
+                let mut db = db::FourLineDb::open();
                 let results = db.query(seq);
                 println!("{:#?}", results);
                 println!("{:?}", t.elapsed());
@@ -149,7 +145,8 @@ fn generate_batches(start: usize, end: usize) {
         let mut into =
             zstd::Encoder::new(std::fs::File::create("4lbatches/tmp.dat").unwrap(), 9).unwrap();
         into.multithread(16).unwrap();
-        for v in b2b_db.into_inner().unwrap() {
+        for (key, archive) in b2b_db.into_inner().unwrap() {
+            let v = (key, Vec::from(archive));
             let buf = bincode::serialize(&v).unwrap();
             into.write_all(&(buf.len() as u64).to_le_bytes()).unwrap();
             into.write_all(&buf).unwrap();
@@ -162,7 +159,8 @@ fn generate_batches(start: usize, end: usize) {
         let mut into =
             zstd::Encoder::new(std::fs::File::create("4lbatches/tmp.dat").unwrap(), 9).unwrap();
         into.multithread(16).unwrap();
-        for v in normal_db.into_inner().unwrap() {
+        for (key, archive) in normal_db.into_inner().unwrap() {
+            let v = (key, Vec::from(archive));
             let buf = bincode::serialize(&v).unwrap();
             into.write_all(&(buf.len() as u64).to_le_bytes()).unwrap();
             into.write_all(&buf).unwrap();
@@ -173,35 +171,46 @@ fn generate_batches(start: usize, end: usize) {
     }
 }
 
-fn build_db(b2b: bool) {
-    let mut index = std::io::BufWriter::new(
-        std::fs::File::create(match b2b {
-            false => "4ldb-index.dat",
-            true => "4ldb-b2b-index.dat",
-        })
-        .unwrap(),
-    );
-    let mut data = std::io::BufWriter::new(
-        std::fs::File::create(match b2b {
-            false => "4ldb-data.dat",
-            true => "4ldb-b2b-data.dat",
-        })
-        .unwrap(),
-    );
+fn build_db() {
+    let mut index = std::io::BufWriter::new(std::fs::File::create("4ldb-index.dat").unwrap());
+    let mut data = std::io::BufWriter::new(std::fs::File::create("4ldb-data.dat").unwrap());
 
     let mut data_offset = 0;
     let mut next_index = 0;
-    for (pieces, entries) in MergedBatches::new(b2b) {
+
+    let nob2b = MergedBatches::new(false);
+    let mut b2b = MergedBatches::new(true);
+
+    for (pieces, nob2b_entries) in nob2b {
+        let (key2, mut b2b_entries) = b2b.next().unwrap();
+        assert_eq!(pieces, key2);
+
+        // collate entries
+        let mut entries = vec![];
+        for mut entry in nob2b_entries {
+            b2b_entries.retain(|&mut v| {
+                if v == entry {
+                    entry.mark_valid_b2b();
+                    false
+                } else {
+                    true
+                }
+            });
+            entry.mark_valid_nob2b();
+            entries.push(entry);
+        }
+        for mut entry in b2b_entries {
+            entry.mark_valid_b2b();
+            entries.push(entry);
+        }
+
+        // write to DB
         let idx = compute_index(pieces);
         for _ in next_index..idx {
             index.write_all(&[0u8; 16]).unwrap();
         }
         if next_index / 282475 < (idx + 1) / 282475 {
-            println!(
-                "{:.1}%{}",
-                idx as f64 / 2824752.49,
-                if b2b { " - b2b" } else { "" }
-            );
+            println!("{:.1}%", idx as f64 / 2824752.49);
         }
         next_index = idx + 1;
 
@@ -227,6 +236,7 @@ fn build_db(b2b: bool) {
 
         index.write_all(bytemuck::bytes_of(&entry)).unwrap();
     }
+    assert!(b2b.next().is_none());
 
     for _ in next_index..7usize.pow(10) {
         index.write_all(&[0; 16]).unwrap();
@@ -287,11 +297,11 @@ impl PartialOrd for PieceOrder {
     }
 }
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, Pod, Zeroable)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Pod, Zeroable)]
 #[repr(C)]
 struct Entry {
     score: u16,
-    time_and_b2b: u16,
+    time_and_flags: u16,
     placements: [u8; 10],
 }
 
@@ -300,25 +310,48 @@ impl Entry {
         Entry {
             score,
             placements,
-            time_and_b2b: time | (b2b as u16) << 15,
+            time_and_flags: time | (b2b as u16) << 15,
         }
     }
 
-    fn dominates(&self, other: &Entry) -> bool {
-        self.score >= other.score && self.time() <= other.time() && self.b2b() >= other.b2b()
-    }
-
     fn time(&self) -> u16 {
-        self.time_and_b2b & 0x7FFF
+        self.time_and_flags & (1 << 13) - 1
     }
 
     fn b2b(&self) -> bool {
-        self.time_and_b2b & 0x8000 != 0
+        self.time_and_flags & 1 << 15 != 0
+    }
+
+    fn valid_nob2b(&self) -> bool {
+        self.time_and_flags & 1 << 14 != 0
+    }
+
+    fn mark_valid_nob2b(&mut self) {
+        self.time_and_flags |= 1 << 14;
+    }
+
+    fn valid_b2b(&self) -> bool {
+        self.time_and_flags & 1 << 13 != 0
+    }
+
+    fn mark_valid_b2b(&mut self) {
+        self.time_and_flags |= 1 << 13;
+    }
+}
+
+impl Dominance for Entry {
+    fn covers(&self, other: &Self) -> bool {
+        self.score >= other.score && self.time() <= other.time() && self.b2b() >= other.b2b()
+    }
+
+    type Dim = u16;
+    fn get_min_better_dimension(&self) -> Self::Dim {
+        self.score
     }
 }
 
 fn add(
-    db: &Mutex<BTreeMap<[Piece; 10], SmallVec<[Entry; 1]>>>,
+    db: &Mutex<BTreeMap<[Piece; 10], Archive<Entry>>>,
     soln: &[Placement],
     score: u32,
     time: u32,
@@ -341,17 +374,7 @@ fn add(
     let entry = Entry::new(score as u16, time as u16, b2b, packed);
 
     let mut db = db.lock().unwrap();
-    add_to_archive(db.entry(pieces).or_default(), entry);
-}
-
-fn add_to_archive(archive: &mut SmallVec<[Entry; 1]>, entry: Entry) {
-    if !archive.iter().any(|e| e.dominates(&entry)) {
-        archive.retain(|e| !entry.dominates(e));
-        archive.push(entry);
-        if archive.len() <= archive.inline_size() && archive.spilled() {
-            archive.shrink_to_fit();
-        }
-    }
+    db.entry(pieces).or_default().add(entry);
 }
 
 fn find_placement_sequences(

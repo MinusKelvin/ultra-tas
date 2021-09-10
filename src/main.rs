@@ -3,6 +3,7 @@ use std::mem::MaybeUninit;
 use data::Piece;
 use structopt::StructOpt;
 
+mod archive;
 mod data;
 mod fourline;
 mod pathfind;
@@ -16,7 +17,7 @@ pub enum Command {
     /// 4-line PC database generation commands
     FourLine(fourline::Options),
     /// Solve an Ultra piece sequence
-    Solve(solve::Options)
+    Solve(solve::Options),
 }
 
 pub fn main() {

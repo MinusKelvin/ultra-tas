@@ -19,18 +19,16 @@ pub struct DbEntry {
     pub time: u32,
     pub score: u32,
     pub end_b2b: bool,
+    pub valid_nob2b: bool,
+    pub valid_b2b: bool,
     pub placements: [Placement; 10],
 }
 
 impl FourLineDb {
-    pub fn open(b2b: bool) -> Self {
-        let (index, data) = match b2b {
-            false => ("4ldb-index.dat", "4ldb-data.dat"),
-            true => ("4ldb-b2b-index.dat", "4ldb-b2b-data.dat"),
-        };
+    pub fn open() -> Self {
         FourLineDb {
-            index: File::open(index).unwrap(),
-            data: File::open(data).unwrap(),
+            index: File::open("4ldb-index.dat").unwrap(),
+            data: File::open("4ldb-data.dat").unwrap(),
         }
     }
 
@@ -61,6 +59,8 @@ fn convert(queue: &[Piece; 10], raw_entry: Entry) -> DbEntry {
         time: raw_entry.time() as u32,
         score: raw_entry.score as u32,
         end_b2b: raw_entry.b2b(),
+        valid_b2b: raw_entry.valid_b2b(),
+        valid_nob2b: raw_entry.valid_nob2b(),
         placements: raw_entry
             .placements
             .iter()
