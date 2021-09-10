@@ -249,8 +249,7 @@ fn advance(
 
     let mut edges = vec![];
     for (extra_hold_cost, hold, seq) in seqs {
-        for mut entry in fourline_db.query(seq) {
-            entry.time += extra_hold_cost;
+        for entry in fourline_db.query(seq) {
             edges.push((
                 entry.score,
                 entry.time + extra_hold_cost,
