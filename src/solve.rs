@@ -11,6 +11,7 @@ use crate::archive::{Archive, Dominance};
 use crate::data::{line_clear_delay, Board, Piece, Placement, SPAWN_DELAY};
 use crate::fourline::FourLineDb;
 use crate::pathfind::{pathfind, Input};
+use crate::twoline::TwoLineDb;
 
 const NUM_SEEDS: u32 = 1 << 16;
 const ULTRA_LENGTH: u32 = 10803;
@@ -85,7 +86,7 @@ impl Dominance for SolveState {
     }
 
     type Dim = u32;
-    fn get_min_better_dimension(&self) -> Self::Dim {
+    fn get_ascending_dim(&self) -> Self::Dim {
         self.score
     }
 }
@@ -168,6 +169,8 @@ fn write_tas(seed: u32, inputs: &[(EnumSet<Input>, Option<u32>)]) {
 }
 
 fn solve_sequence(queue: &[Piece]) -> Archive<SolveState> {
+    let twoline_db = TwoLineDb::gen();
+
     let mut fourline_db = FourLineDb::open();
 
     let mut start_layer = Layer::default();
@@ -182,23 +185,19 @@ fn solve_sequence(queue: &[Piece]) -> Archive<SolveState> {
 
     while let Some(layer) = layers.pop_front() {
         for p in Piece::ALL {
-            advance(
-                &mut fourline_db,
-                &mut finish_states,
-                &mut layers,
-                Some(p),
-                &layer.hold_piece[p as usize],
-                &queue[1..],
-            );
+            let starts = &layer.hold_piece[p as usize];
+            if starts.is_empty() {
+                continue;
+            }
+            let mut edges = twoline_edges(&twoline_db, Some(p), &queue[1..]);
+            edges.append(&mut fourline_edges(&mut fourline_db, Some(p), &queue[1..]));
+            advance_edges(&mut finish_states, &mut layers, starts, &edges);
         }
-        advance(
-            &mut fourline_db,
-            &mut finish_states,
-            &mut layers,
-            None,
-            &layer.empty_hold,
-            queue,
-        );
+        if !layer.empty_hold.is_empty() {
+            let mut edges = twoline_edges(&twoline_db, None, queue);
+            edges.append(&mut fourline_edges(&mut fourline_db, None, queue));
+            advance_edges(&mut finish_states, &mut layers, &layer.empty_hold, &edges);
+        }
 
         queue = &queue[5..];
         assert!(queue.len() > 16);
@@ -226,73 +225,102 @@ fn solve_sequence(queue: &[Piece]) -> Archive<SolveState> {
     finish_states
 }
 
-fn advance(
-    fourline_db: &mut FourLineDb,
+struct Edge {
+    score: u32,
+    time: u32,
+    b2b: bool,
+    valid_b2b: bool,
+    valid_nob2b: bool,
+    hold: Option<Piece>,
+    placements: ArrayVec<Placement, 15>,
+}
+
+fn twoline_edges(twoline_db: &TwoLineDb, hold: Option<Piece>, queue: &[Piece]) -> Vec<Edge> {
+    let mut edges = vec![];
+    hold_sequences(5, hold, queue, |extra_hold_cost, hold, seq| {
+        let seq: [_; 5] = seq.try_into().unwrap();
+        for entry in twoline_db.query(seq) {
+            edges.push(Edge {
+                score: entry.score,
+                time: entry.time + extra_hold_cost,
+                hold,
+                b2b: false,
+                valid_b2b: true,
+                valid_nob2b: true,
+                placements: entry.placements.iter().copied().collect(),
+            });
+        }
+    });
+    edges
+}
+
+fn fourline_edges(fourline_db: &mut FourLineDb, hold: Option<Piece>, queue: &[Piece]) -> Vec<Edge> {
+    let mut edges = vec![];
+    hold_sequences(10, hold, queue, |extra_hold_cost, hold, seq| {
+        let seq: [_; 10] = seq.try_into().unwrap();
+        for entry in fourline_db.query(seq) {
+            edges.push(Edge {
+                score: entry.score,
+                time: entry.time + extra_hold_cost,
+                hold,
+                b2b: entry.end_b2b,
+                valid_b2b: entry.valid_b2b,
+                valid_nob2b: entry.valid_nob2b,
+                placements: entry.placements.iter().copied().collect(),
+            });
+        }
+    });
+    edges
+}
+
+fn advance_edges(
     finish_states: &mut Archive<SolveState>,
     layers: &mut VecDeque<Layer>,
-    hold: Option<Piece>,
     starts: &Archive<SolveState>,
-    queue: &[Piece],
+    edges: &[Edge],
 ) {
-    if starts.is_empty() {
-        return;
-    }
-
-    let mut seqs = vec![];
-    hold_sequences(10, hold, queue, |cost, hold, seq| {
-        seqs.push((cost, hold, seq.try_into().unwrap()))
-    });
-
-    while layers.len() < 2 {
+    while layers.len() < 3 {
         layers.push_back(Layer::default());
-    }
-
-    let mut edges = vec![];
-    for (extra_hold_cost, hold, seq) in seqs {
-        for entry in fourline_db.query(seq) {
-            edges.push((
-                entry.score,
-                entry.time + extra_hold_cost,
-                entry.end_b2b,
-                hold,
-                entry.placements,
-                entry.valid_nob2b,
-                entry.valid_b2b,
-            ));
-        }
     }
 
     for start in starts.iter() {
         let mut had_successor = false;
-        for &(score, time, b2b, hold, placements, valid_nob2b, valid_b2b) in &edges {
-            if start.time + time > ULTRA_LENGTH {
+        for edge in edges {
+            if start.time + edge.time > ULTRA_LENGTH {
                 continue;
             }
-            if start.b2b && !valid_b2b {
+            if start.b2b && !edge.valid_b2b {
                 continue;
-            } else if !start.b2b && !valid_nob2b {
+            } else if !start.b2b && !edge.valid_nob2b {
                 continue;
             }
             had_successor = true;
 
             let mut placement_sequence = PlacementSequenceList {
                 next: start.placement_sequence.clone(),
-                placements: placements.iter().map(|&p| (p, None)).collect(),
+                placements: edge.placements.iter().map(|&p| (p, None)).collect(),
             };
-            placement_sequence.placements.last_mut().unwrap().1 = Some(start.score + score);
+            placement_sequence.placements.last_mut().unwrap().1 = Some(start.score + edge.score);
             let result_state = SolveState {
-                score: start.score + score,
-                time: start.time + time,
+                score: start.score + edge.score,
+                time: start.time + edge.time,
                 placement_sequence: Some(Rc::new(placement_sequence)),
-                b2b,
+                b2b: edge.b2b,
             };
 
-            let list = match hold {
-                None => &mut layers[1].empty_hold,
-                Some(p) => &mut layers[1].hold_piece[p as usize],
+            let layer_idx = match edge.placements.len() {
+                5 => 0,
+                10 => 1,
+                15 => 2,
+                _ => unreachable!(),
+            };
+            let layer = &mut layers[layer_idx];
+            let archive = match edge.hold {
+                None => &mut layer.empty_hold,
+                Some(p) => &mut layer.hold_piece[p as usize],
             };
 
-            list.add(result_state);
+            archive.add(result_state);
         }
 
         if !had_successor {

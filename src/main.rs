@@ -9,6 +9,8 @@ mod fourline;
 mod pathfind;
 mod sixline;
 mod solve;
+mod placement_search;
+mod twoline;
 
 #[derive(StructOpt)]
 pub enum Command {

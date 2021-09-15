@@ -406,3 +406,39 @@ pub fn line_clear_score(lines_cleared: u32, perfect_clear: bool, b2b: bool, spin
         }
     }
 }
+
+impl From<pcf::SrsPiece> for Placement {
+    fn from(p: pcf::SrsPiece) -> Self {
+        Placement {
+            piece: p.piece.into(),
+            rotation: p.rotation.into(),
+            x: p.x as i8,
+            y: p.y as i8,
+        }
+    }
+}
+
+impl From<pcf::Piece> for Piece {
+    fn from(p: pcf::Piece) -> Self {
+        match p {
+            pcf::Piece::I => Piece::I,
+            pcf::Piece::O => Piece::O,
+            pcf::Piece::T => Piece::T,
+            pcf::Piece::L => Piece::L,
+            pcf::Piece::J => Piece::J,
+            pcf::Piece::S => Piece::S,
+            pcf::Piece::Z => Piece::Z,
+        }
+    }
+}
+
+impl From<pcf::Rotation> for Rotation {
+    fn from(r: pcf::Rotation) -> Self {
+        match r {
+            pcf::Rotation::North => Rotation::North,
+            pcf::Rotation::East => Rotation::East,
+            pcf::Rotation::South => Rotation::South,
+            pcf::Rotation::West => Rotation::West,
+        }
+    }
+}
