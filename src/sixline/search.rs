@@ -5,7 +5,7 @@ use dashmap::DashMap;
 use rayon::Scope;
 use serde::{Deserialize, Serialize};
 
-use crate::{ArrayExt, data::*};
+use crate::data::*;
 
 #[inline(always)]
 fn search_impl(bag_states: &[BagState], b: &Board, mut option: impl FnMut(&[BagState], Placement)) {
@@ -51,7 +51,7 @@ fn search_pc(
                 let mut result: ArrayVec<_, 15> = start.iter().copied().collect();
                 result.try_extend_from_slice(placements).unwrap();
                 let placements = result.into_inner().unwrap();
-                let key = placements.amap(|p| p.piece);
+                let key = placements.map(|p| p.piece);
                 pcs.entry(key).or_default().push(placements);
             }
         } else if check_pcable(board) {
@@ -95,7 +95,7 @@ fn search_tsd(
 
             if new_board.line_clears().count_ones() == 2 {
                 let mask = (1 << new_board.line_clears().trailing_zeros()) - 1;
-                let new_board = Board(new_board.0.amap(|c| c & mask | (c >> 2) & !mask));
+                let new_board = Board(new_board.0.map(|c| c & mask | (c >> 2) & !mask));
 
                 placements.push(placement);
                 op_tsd(placements, new_board, bags);
@@ -235,7 +235,7 @@ fn is_valid_before_tsd(board: &Board) -> bool {
         }
 
         let mask = (1 << i) - 1;
-        let cleared_board = Board(board.0.amap(|c| c & mask | (c >> 2) & !mask));
+        let cleared_board = Board(board.0.map(|c| c & mask | (c >> 2) & !mask));
         if !cleared_board.contains_holes() && check_pcable(cleared_board) {
             return true;
         }

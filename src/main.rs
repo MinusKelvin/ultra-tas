@@ -30,23 +30,14 @@ pub fn main() {
     }
 }
 
-// stable polyfill for [T; N]::map
+// stable polyfill for [T; N]::zip
 trait ArrayExt<A, B> {
     type Map;
-    fn amap(self, f: impl FnMut(A) -> B) -> Self::Map;
     fn azip(self, other: Self, f: impl FnMut(A, A) -> B) -> Self::Map;
 }
 
 impl<A, B, const N: usize> ArrayExt<A, B> for [A; N] {
     type Map = [B; N];
-
-    fn amap(self, mut f: impl FnMut(A) -> B) -> [B; N] {
-        let mut result: [MaybeUninit<B>; N] = unsafe { MaybeUninit::uninit().assume_init() };
-        for (i, a) in std::array::IntoIter::new(self).enumerate() {
-            result[i] = MaybeUninit::new(f(a));
-        }
-        unsafe { std::mem::transmute_copy(&result) }
-    }
 
     fn azip(self, other: Self, mut f: impl FnMut(A, A) -> B) -> [B; N] {
         let mut result: [MaybeUninit<B>; N] = unsafe { MaybeUninit::uninit().assume_init() };

@@ -172,7 +172,7 @@ impl Placement {
             rotations(Piece::S),
             rotations(Piece::Z),
         ];
-        LUT[self.piece as usize][self.rotation as usize].amap(|(x, y)| (x + self.x, y + self.y))
+        LUT[self.piece as usize][self.rotation as usize].map(|(x, y)| (x + self.x, y + self.y))
     }
 
     #[inline(always)]
