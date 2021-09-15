@@ -70,6 +70,30 @@ fn check_hard_drops() {
         ),
         Some((36, vec![Input::Ccw | Input::HardDrop]))
     );
+    assert_eq!(
+        pathfind(
+            &empty,
+            Placement {
+                piece: Piece::I,
+                rotation: Rotation::West,
+                x: 4,
+                y: 1,
+            }
+        ),
+        Some((34, vec![Input::Ccw | Input::HardDrop]))
+    );
+    assert_eq!(
+        pathfind(
+            &empty,
+            Placement {
+                piece: Piece::I,
+                rotation: Rotation::West,
+                x: 5,
+                y: 1,
+            }
+        ),
+        Some((34, vec![Input::Cw | Input::HardDrop]))
+    );
 }
 
 #[test]

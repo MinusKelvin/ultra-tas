@@ -246,12 +246,12 @@ impl Placement {
             },
             (Piece::I, Rotation::East) => Placement {
                 rotation: Rotation::West,
-                y: self.y + 1,
+                y: self.y - 1,
                 ..self
             },
             (Piece::I, Rotation::West) => Placement {
                 rotation: Rotation::East,
-                y: self.y - 1,
+                y: self.y + 1,
                 ..self
             },
             (Piece::S | Piece::Z, Rotation::North) => Placement {

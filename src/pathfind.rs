@@ -280,7 +280,7 @@ fn above_stack(board: &Board, placement: Placement) -> Option<Vec<EnumSet<Input>
     };
 
     let origin = match (placement.piece, placement.rotation) {
-        (Piece::I, Rotation::South) => 5,
+        (Piece::I, Rotation::East | Rotation::South) => 5,
         (Piece::O, Rotation::West | Rotation::South) => 5,
         _ => 4,
     };
