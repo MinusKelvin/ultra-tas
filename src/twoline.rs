@@ -66,11 +66,6 @@ impl Dominance for Entry {
     fn covers(&self, other: &Self) -> bool {
         self.score >= other.score && self.time <= other.time
     }
-
-    type Dim = u32;
-    fn get_ascending_dim(&self) -> Self::Dim {
-        self.score
-    }
 }
 
 fn piece_value(p: Piece) -> Option<usize> {

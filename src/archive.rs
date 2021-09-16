@@ -10,21 +10,12 @@ impl<T: Dominance> Archive<T> {
     }
 
     pub fn add(&mut self, v: T) {
-        let possible_dominators_start = self
-            .list
-            .partition_point(|e| e.get_ascending_dim() < v.get_ascending_dim());
-
-        if self.list.iter().skip(possible_dominators_start).any(|e| e.covers(&v)) {
+        if self.list.iter().any(|e| e.covers(&v)) {
             return;
         }
 
         self.list.retain(|e| !v.covers(e));
         self.list.push(v);
-        for i in (1..self.list.len()).rev() {
-            if self.list[i].get_ascending_dim() < self.list[i-1].get_ascending_dim() {
-                self.list.swap(i, i-1);
-            }
-        }
     }
 }
 
@@ -60,7 +51,4 @@ impl<T> IntoIterator for Archive<T> {
 pub trait Dominance {
     /// non-strict dominance.
     fn covers(&self, other: &Self) -> bool;
-
-    type Dim: Ord;
-    fn get_ascending_dim(&self) -> Self::Dim;
 }

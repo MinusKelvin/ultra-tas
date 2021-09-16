@@ -87,11 +87,6 @@ impl Dominance for SolveState {
     fn covers(&self, other: &Self) -> bool {
         self.score >= other.score && self.time <= other.time && self.b2b >= other.b2b
     }
-
-    type Dim = u32;
-    fn get_ascending_dim(&self) -> Self::Dim {
-        self.score
-    }
 }
 
 #[derive(Default)]
