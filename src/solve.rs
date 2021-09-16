@@ -11,7 +11,10 @@ use crate::archive::{Archive, Dominance};
 use crate::data::{line_clear_delay, Board, Piece, Placement, SPAWN_DELAY};
 use crate::fourline::FourLineDb;
 use crate::pathfind::{pathfind, Input};
+use crate::solve::edges::Edges;
 use crate::twoline::TwoLineDb;
+
+mod edges;
 
 const NUM_SEEDS: u32 = 1 << 16;
 const ULTRA_LENGTH: u32 = 10803;
@@ -189,13 +192,15 @@ fn solve_sequence(queue: &[Piece]) -> Archive<SolveState> {
             if starts.is_empty() {
                 continue;
             }
-            let mut edges = twoline_edges(&twoline_db, Some(p), &queue[1..]);
-            edges.append(&mut fourline_edges(&mut fourline_db, Some(p), &queue[1..]));
+            let mut edges = Edges::new();
+            twoline_edges(&mut edges, &twoline_db, Some(p), &queue[1..]);
+            fourline_edges(&mut edges, &mut fourline_db, Some(p), &queue[1..]);
             advance_edges(&mut finish_states, &mut layers, starts, &edges);
         }
         if !layer.empty_hold.is_empty() {
-            let mut edges = twoline_edges(&twoline_db, None, queue);
-            edges.append(&mut fourline_edges(&mut fourline_db, None, queue));
+            let mut edges = Edges::new();
+            twoline_edges(&mut edges, &twoline_db, None, queue);
+            fourline_edges(&mut edges, &mut fourline_db, None, queue);
             advance_edges(&mut finish_states, &mut layers, &layer.empty_hold, &edges);
         }
 
@@ -225,22 +230,16 @@ fn solve_sequence(queue: &[Piece]) -> Archive<SolveState> {
     finish_states
 }
 
-struct Edge {
-    score: u32,
-    time: u32,
-    b2b: bool,
-    valid_b2b: bool,
-    valid_nob2b: bool,
+fn twoline_edges(
+    edges: &mut edges::Edges,
+    twoline_db: &TwoLineDb,
     hold: Option<Piece>,
-    placements: ArrayVec<Placement, 15>,
-}
-
-fn twoline_edges(twoline_db: &TwoLineDb, hold: Option<Piece>, queue: &[Piece]) -> Vec<Edge> {
-    let mut edges = vec![];
+    queue: &[Piece],
+) {
     hold_sequences(5, hold, queue, |extra_hold_cost, hold, seq| {
         let seq: [_; 5] = seq.try_into().unwrap();
         for entry in twoline_db.query(seq) {
-            edges.push(Edge {
+            edges.add_edge(edges::Edge {
                 score: entry.score,
                 time: entry.time + extra_hold_cost,
                 hold,
@@ -251,15 +250,18 @@ fn twoline_edges(twoline_db: &TwoLineDb, hold: Option<Piece>, queue: &[Piece]) -
             });
         }
     });
-    edges
 }
 
-fn fourline_edges(fourline_db: &mut FourLineDb, hold: Option<Piece>, queue: &[Piece]) -> Vec<Edge> {
-    let mut edges = vec![];
+fn fourline_edges(
+    edges: &mut edges::Edges,
+    fourline_db: &mut FourLineDb,
+    hold: Option<Piece>,
+    queue: &[Piece],
+) {
     hold_sequences(10, hold, queue, |extra_hold_cost, hold, seq| {
         let seq: [_; 10] = seq.try_into().unwrap();
         for entry in fourline_db.query(seq) {
-            edges.push(Edge {
+            edges.add_edge(edges::Edge {
                 score: entry.score,
                 time: entry.time + extra_hold_cost,
                 hold,
@@ -270,14 +272,13 @@ fn fourline_edges(fourline_db: &mut FourLineDb, hold: Option<Piece>, queue: &[Pi
             });
         }
     });
-    edges
 }
 
 fn advance_edges(
     finish_states: &mut Archive<SolveState>,
     layers: &mut VecDeque<Layer>,
     starts: &Archive<SolveState>,
-    edges: &[Edge],
+    edges: &edges::Edges,
 ) {
     while layers.len() < 3 {
         layers.push_back(Layer::default());
@@ -285,13 +286,8 @@ fn advance_edges(
 
     for start in starts.iter() {
         let mut had_successor = false;
-        for edge in edges {
+        for edge in edges.get_edges(start.b2b) {
             if start.time + edge.time > ULTRA_LENGTH {
-                continue;
-            }
-            if start.b2b && !edge.valid_b2b {
-                continue;
-            } else if !start.b2b && !edge.valid_nob2b {
                 continue;
             }
             had_successor = true;
