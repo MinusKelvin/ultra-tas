@@ -294,6 +294,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "once_cell"
+version = "1.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "692fcb63b64b1758029e0a96ee63e049ce8c5948587f2f7208df04625e5f6b56"
+
+[[package]]
 name = "pcf"
 version = "0.1.0"
 source = "git+https://github.com/MinusKelvin/pcf#7355850fa975d057745c1b8f21d7645a4d3c722e"
@@ -469,6 +475,7 @@ dependencies = [
  "bytemuck",
  "dashmap",
  "enumset",
+ "once_cell",
  "pcf",
  "rayon",
  "serde",

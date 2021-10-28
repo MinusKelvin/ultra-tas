@@ -1,17 +1,19 @@
-use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
-
 use arrayvec::ArrayVec;
-use bytemuck::Zeroable;
+use once_cell::sync::Lazy;
 
 use crate::data::{Piece, Placement};
 use crate::fourline::LargeDbEntry;
 
 use super::{compute_index, Entry, SmallDbEntry};
 
+static DATABASE: Lazy<(Vec<u8>, Vec<u8>)> = Lazy::new(|| {
+    let index = std::fs::read("4ldb-index.dat").unwrap();
+    let data = std::fs::read("4ldb-data.dat").unwrap();
+    (index, data)
+});
+
 pub struct FourLineDb {
-    index: File,
-    data: File,
+    _priv: (),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -26,29 +28,29 @@ pub struct DbEntry {
 
 impl FourLineDb {
     pub fn open() -> Self {
-        FourLineDb {
-            index: File::open("4ldb-index.dat").unwrap(),
-            data: File::open("4ldb-data.dat").unwrap(),
-        }
+        Lazy::force(&DATABASE);
+        FourLineDb { _priv: () }
     }
 
     pub fn query(&mut self, queue: [Piece; 10]) -> Vec<DbEntry> {
         let index = compute_index(queue);
 
-        let mut entry = LargeDbEntry::zeroed();
-        self.index
-            .seek(SeekFrom::Start(16 * index as u64))
-            .unwrap();
-        self.index.read_exact(bytemuck::bytes_of_mut(&mut entry)).unwrap();
+        let entry: &LargeDbEntry =
+            bytemuck::from_bytes(&DATABASE.0[16 * index as usize..16 * (index + 1) as usize]);
 
         match entry.len {
             0 => vec![],
-            1 => vec![convert(&queue, bytemuck::cast::<_, SmallDbEntry>(entry).entry)],
+            1 => vec![convert(
+                &queue,
+                bytemuck::cast_ref::<_, SmallDbEntry>(entry).entry,
+            )],
             _ => {
-                let mut entries = vec![Entry::zeroed(); entry.len as usize];
-                self.data.seek(SeekFrom::Start(entry.offset)).unwrap();
-                self.data.read_exact(bytemuck::cast_slice_mut(&mut entries)).unwrap();
-                entries.into_iter().map(|e| convert(&queue, e)).collect()
+                let entries = bytemuck::cast_slice(
+                    &DATABASE.1[entry.offset as usize
+                        ..entry.offset as usize
+                            + entry.len as usize * std::mem::size_of::<Entry>()],
+                );
+                entries.iter().map(|&e| convert(&queue, e)).collect()
             }
         }
     }

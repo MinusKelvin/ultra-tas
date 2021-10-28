@@ -18,6 +18,7 @@ structopt = "0.3.21"
 bytemuck = { version = "1.5.1", features = ["derive"] }
 pcf = { git = "https://github.com/MinusKelvin/pcf" }
 smallvec = { version = "1.6.1", features = ["union", "serde"] }
+once_cell = "1.8.0"
 
 [profile.release]
 debug = true
