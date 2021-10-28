@@ -5,6 +5,7 @@ use std::rc::Rc;
 
 use arrayvec::ArrayVec;
 use enumset::EnumSet;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use structopt::StructOpt;
 
 use crate::archive::{Archive, Dominance};
@@ -18,55 +19,37 @@ mod edges;
 
 const NUM_SEEDS: u32 = 1 << 16;
 const ULTRA_LENGTH: u32 = 10803;
-const WORKERS: u32 = 1;
 
 #[derive(StructOpt)]
 pub struct Options {}
 
 impl Options {
     pub fn run(self) {
-        let handles: Vec<_> = (0..WORKERS)
-            .map(|base| {
-                std::thread::spawn(move || {
-                    for seed in (base..NUM_SEEDS).step_by(WORKERS as usize) {
-                        let queue = gen_queue_ppt1(seed);
-                        let mut finish_states: Vec<_> = solve_sequence(&queue).into();
+        std::fs::create_dir_all("soln").unwrap();
+        (0..NUM_SEEDS).into_par_iter().for_each(|seed| {
+            let queue = gen_queue_ppt1(seed);
 
-                        let mut max = finish_states.pop().unwrap();
-                        for state in finish_states {
-                            if state.score > max.score {
-                                max = state;
-                            }
-                        }
+            let mut solutions: Vec<_> = solve_sequence(&queue).into();
+            solutions.sort_by_key(|a| a.score);
 
-                        let mut pieces = vec![];
-                        let mut seq = max.placement_sequence.as_ref();
-                        while let Some(s) = seq {
-                            pieces.push(&s.placements);
-                            seq = s.next.as_ref();
-                        }
-                        pieces.reverse();
-                        let placement_sequence: Vec<_> =
-                            pieces.into_iter().flatten().copied().collect();
+            let best = match solutions.first() {
+                Some(v) => v,
+                None => return,
+            };
 
-                        let result = input_sequence(&placement_sequence, &queue);
-                        println!(
-                            "{:04X}: {} points in {} frames ({})",
-                            seed,
-                            max.score,
-                            max.time,
-                            result.len()
-                        );
-                        write_tas(seed, &result[2..]);
+            let mut pieces = vec![];
+            let mut seq = best.placement_sequence.as_ref();
+            while let Some(s) = seq {
+                pieces.push(&s.placements);
+                seq = s.next.as_ref();
+            }
+            pieces.reverse();
+            let placement_sequence: Vec<_> = pieces.into_iter().flatten().copied().collect();
 
-                        break;
-                    }
-                })
-            })
-            .collect();
-        for handle in handles {
-            handle.join().unwrap();
-        }
+            let result = input_sequence(&placement_sequence, &queue);
+            println!("{:04X}: {}, {}", seed, best.score, best.time,);
+            write_tas(seed, &result[2..]);
+        });
     }
 }
 
@@ -140,7 +123,8 @@ fn input_sequence(
 }
 
 fn write_tas(seed: u32, inputs: &[(EnumSet<Input>, Option<u32>)]) {
-    let mut file = std::io::BufWriter::new(std::fs::File::create(format!("{:04X}", seed)).unwrap());
+    let mut file =
+        std::io::BufWriter::new(std::fs::File::create(format!("soln/{:04X}", seed)).unwrap());
 
     file.write(format!("{:04X}\n", seed).as_bytes()).unwrap();
     for &(frame, score) in inputs {
@@ -201,25 +185,6 @@ fn solve_sequence(queue: &[Piece]) -> Archive<SolveState> {
 
         queue = &queue[5..];
         assert!(queue.len() > 16);
-
-        let mut shortest_entry = 100000;
-        let mut count = 0;
-        for entry in layer
-            .hold_piece
-            .iter()
-            .flat_map(|i| i.iter())
-            .chain(layer.empty_hold.iter())
-        {
-            shortest_entry = shortest_entry.min(entry.time);
-            count += 1;
-        }
-        if shortest_entry != 100000 {
-            println!(
-                "{:.0}%, {} entries",
-                shortest_entry as f64 * 100.0 / ULTRA_LENGTH as f64,
-                count
-            );
-        }
     }
 
     finish_states
