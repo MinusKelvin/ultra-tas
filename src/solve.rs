@@ -32,7 +32,7 @@ impl Options {
             let mut solutions: Vec<_> = solve_sequence(&queue).into();
             solutions.sort_by_key(|a| a.score);
 
-            let best = match solutions.first() {
+            let best = match solutions.last() {
                 Some(v) => v,
                 None => return,
             };
