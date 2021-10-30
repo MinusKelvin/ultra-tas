@@ -29,24 +29,28 @@ pub struct DbEntry {
 
 impl FourLineDb {
     pub fn load() -> Self {
-        let mut index_file = std::io::BufReader::new(std::fs::File::open("4ldb-index.dat").unwrap());
+        let mut index_file =
+            std::io::BufReader::new(std::fs::File::open("4ldb-index.dat").unwrap());
         let mut index = vec![];
         let mut buffer = IndexEntry::zeroed();
-        while index_file.read_exact(bytemuck::bytes_of_mut(&mut buffer)).is_ok() {
+        while index_file
+            .read_exact(bytemuck::bytes_of_mut(&mut buffer))
+            .is_ok()
+        {
             index.push(buffer);
         }
 
         let mut data_file = std::io::BufReader::new(std::fs::File::open("4ldb-data.dat").unwrap());
         let mut data = vec![];
         let mut buffer = DataEntry::zeroed();
-        while data_file.read_exact(bytemuck::bytes_of_mut(&mut buffer)).is_ok() {
+        while data_file
+            .read_exact(bytemuck::bytes_of_mut(&mut buffer))
+            .is_ok()
+        {
             data.push(buffer);
         }
 
-        FourLineDb {
-            index,
-            data,
-        }
+        FourLineDb { index, data }
     }
 
     pub fn query(&self, queue: [Piece; 10]) -> Vec<DbEntry> {

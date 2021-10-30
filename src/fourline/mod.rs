@@ -206,7 +206,7 @@ fn build_db() {
         // write to DB
         let idx = compute_index(pieces);
         for _ in next_index..idx {
-            index.write_all(&[0u8; 16]).unwrap();
+            index.write_all(bytemuck::bytes_of(&IndexEntry::zeroed())).unwrap();
         }
         if next_index / 282475 < (idx + 1) / 282475 {
             println!("{:.1}%", idx as f64 / 2824752.49);
@@ -231,7 +231,7 @@ fn build_db() {
     assert!(b2b.next().is_none());
 
     for _ in next_index..7usize.pow(10) {
-        index.write_all(&[0; 16]).unwrap();
+        index.write_all(bytemuck::bytes_of(&IndexEntry::zeroed())).unwrap();
     }
 }
 
