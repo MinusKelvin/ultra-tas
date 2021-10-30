@@ -71,20 +71,16 @@ impl Options {
             let queue = gen_queue_ppt1(seed);
 
             let mut placements = vec![];
-            let mut queue_index = 0;
             for set in placement_sets {
                 match set {
                     PlacementSet::FivePiece(places) => {
                         placements.extend_from_slice(&places);
-                        queue_index += 5;
                     }
-                    PlacementSet::TenPiece(index) => {
-                        let places = four_line_placements.get(
+                    PlacementSet::TenPiece(index, queue) => {
+                        placements.extend_from_slice(&four_line_placements.get(
                             index,
-                            queue[queue_index..queue_index + 10].try_into().unwrap(),
-                        );
-                        placements.extend_from_slice(&places);
-                        queue_index += 10;
+                            queue,
+                        ));
                     }
                 }
             }
@@ -123,7 +119,7 @@ struct Layer {
 #[derive(Copy, Clone, Serialize, Deserialize)]
 pub enum PlacementSet {
     FivePiece([Placement; 5]),
-    TenPiece(u32),
+    TenPiece(u32, [Piece; 10]),
 }
 
 fn input_sequence(placements: &[Placement], queue: &[Piece]) -> Vec<EnumSet<Input>> {
@@ -262,7 +258,7 @@ fn fourline_edges(
                 b2b: entry.end_b2b,
                 valid_b2b: entry.valid_b2b,
                 valid_nob2b: entry.valid_nob2b,
-                placements: PlacementSet::TenPiece(entry.index),
+                placements: PlacementSet::TenPiece(entry.index, seq),
             });
         }
     });
@@ -299,7 +295,7 @@ fn advance_edges(
 
             let layer_idx = match edge.placements {
                 PlacementSet::FivePiece(_) => 0,
-                PlacementSet::TenPiece(_) => 1,
+                PlacementSet::TenPiece(_, _) => 1,
                 // PlacementSet::FifteenPiece(_) => 2,
             };
             let layer = &mut layers[layer_idx];
