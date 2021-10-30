@@ -1,7 +1,7 @@
-use arrayvec::ArrayVec;
-
 use crate::archive::{Archive, Dominance};
-use crate::data::{Piece, Placement};
+use crate::data::Piece;
+
+use super::PlacementSet;
 
 pub struct Edge {
     pub score: u32,
@@ -10,7 +10,7 @@ pub struct Edge {
     pub valid_b2b: bool,
     pub valid_nob2b: bool,
     pub hold: Option<Piece>,
-    pub placements: ArrayVec<Placement, 15>,
+    pub placements: PlacementSet,
 }
 
 pub struct Edges {
@@ -22,7 +22,7 @@ struct InternalEdge {
     score: u32,
     time: u32,
     b2b: bool,
-    placements: ArrayVec<Placement, 15>,
+    placements: PlacementSet,
 }
 
 impl Dominance for InternalEdge {
@@ -63,7 +63,7 @@ impl Edges {
                 score: edge.score,
                 time: edge.time,
                 b2b: edge.b2b,
-                placements: edge.placements.clone(),
+                placements: edge.placements,
             });
         }
         if edge.valid_nob2b {
@@ -71,7 +71,7 @@ impl Edges {
                 score: edge.score,
                 time: edge.time,
                 b2b: edge.b2b,
-                placements: edge.placements.clone(),
+                placements: edge.placements,
             });
         }
     }
@@ -86,7 +86,7 @@ impl Edges {
                 valid_b2b: b2b,
                 valid_nob2b: !b2b,
                 hold: index_to_hold(i),
-                placements: e.placements.clone(),
+                placements: e.placements,
             })
         })
     }

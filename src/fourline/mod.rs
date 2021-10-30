@@ -11,15 +11,15 @@ use structopt::StructOpt;
 
 use crate::archive::{Archive, Dominance};
 use crate::data::{Piece, Placement};
-use crate::placement_search::find_placement_sequences;
 use crate::parse_seq;
+use crate::placement_search::find_placement_sequences;
 
 use self::merge::MergedBatches;
 
 mod db;
 mod merge;
 
-pub use self::db::FourLineDb;
+pub use self::db::{FourLineDb, FourLinePlacementsDb};
 
 #[derive(StructOpt)]
 pub enum Options {
@@ -47,7 +47,7 @@ impl Options {
                 }
                 let seq = r.try_into().unwrap();
                 let t = std::time::Instant::now();
-                let mut db = db::FourLineDb::open();
+                let db = db::FourLineDb::load();
                 let results = db.query(seq);
                 println!("{:#?}", results);
                 println!("{:?}", t.elapsed());
@@ -172,8 +172,9 @@ fn generate_batches(start: usize, end: usize) {
 fn build_db() {
     let mut index = std::io::BufWriter::new(std::fs::File::create("4ldb-index.dat").unwrap());
     let mut data = std::io::BufWriter::new(std::fs::File::create("4ldb-data.dat").unwrap());
+    let mut solns = std::io::BufWriter::new(std::fs::File::create("4ldb-placements.dat").unwrap());
 
-    let mut data_offset = 0;
+    let mut next_data = 0;
     let mut next_index = 0;
 
     let nob2b = MergedBatches::new(false);
@@ -212,27 +213,20 @@ fn build_db() {
         }
         next_index = idx + 1;
 
-        let len: u16 = entries.len().try_into().unwrap();
-        let mut entry = LargeDbEntry::zeroed();
+        index.write_all(bytemuck::bytes_of(&IndexEntry {
+            index: next_data,
+            len: entries.len() as u32,
+        })).unwrap();
 
-        match len {
-            0 => {}
-            1 => {
-                let entry: &mut SmallDbEntry = bytemuck::cast_mut(&mut entry);
-                entry.len = len;
-                entry.entry = entries[0];
-            }
-            _ => {
-                entry.len = len;
-                entry.offset = data_offset;
-
-                let data_bytes = bytemuck::cast_slice(&entries);
-                data.write_all(data_bytes).unwrap();
-                data_offset += data_bytes.len() as u64;
-            }
+        for entry in entries {
+            data.write_all(bytemuck::bytes_of(&DataEntry {
+                score: entry.score,
+                time_and_flags: entry.time_and_flags,
+            })).unwrap();
+            solns.write_all(bytemuck::bytes_of(&entry.placements)).unwrap();
+            
+            next_data += 1;
         }
-
-        index.write_all(bytemuck::bytes_of(&entry)).unwrap();
     }
     assert!(b2b.next().is_none());
 
@@ -243,17 +237,34 @@ fn build_db() {
 
 #[derive(Copy, Clone, Pod, Zeroable)]
 #[repr(C)]
-struct SmallDbEntry {
-    len: u16,
-    entry: Entry,
+struct DataEntry {
+    score: u16,
+    time_and_flags: u16,
 }
 
 #[derive(Copy, Clone, Pod, Zeroable)]
 #[repr(C)]
-struct LargeDbEntry {
-    len: u16,
-    _padding: [u8; 6],
-    offset: u64,
+struct IndexEntry {
+    index: u32,
+    len: u32,
+}
+
+impl DataEntry {
+    fn time(&self) -> u16 {
+        self.time_and_flags & (1 << 13) - 1
+    }
+
+    fn b2b(&self) -> bool {
+        self.time_and_flags & 1 << 15 != 0
+    }
+
+    fn valid_nob2b(&self) -> bool {
+        self.time_and_flags & 1 << 14 != 0
+    }
+
+    fn valid_b2b(&self) -> bool {
+        self.time_and_flags & 1 << 13 != 0
+    }
 }
 
 #[derive(PartialEq, Eq)]
@@ -320,16 +331,8 @@ impl Entry {
         self.time_and_flags & 1 << 15 != 0
     }
 
-    fn valid_nob2b(&self) -> bool {
-        self.time_and_flags & 1 << 14 != 0
-    }
-
     fn mark_valid_nob2b(&mut self) {
         self.time_and_flags |= 1 << 14;
-    }
-
-    fn valid_b2b(&self) -> bool {
-        self.time_and_flags & 1 << 13 != 0
     }
 
     fn mark_valid_b2b(&mut self) {

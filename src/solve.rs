@@ -3,14 +3,14 @@ use std::convert::TryInto;
 use std::io::Write;
 use std::rc::Rc;
 
-use arrayvec::ArrayVec;
 use enumset::EnumSet;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
 use crate::archive::{Archive, Dominance};
 use crate::data::{line_clear_delay, Board, Piece, Placement, SPAWN_DELAY};
-use crate::fourline::FourLineDb;
+use crate::fourline::{FourLineDb, FourLinePlacementsDb};
 use crate::pathfind::{pathfind, Input};
 use crate::solve::edges::Edges;
 use crate::twoline::TwoLineDb;
@@ -25,32 +25,71 @@ pub struct Options {}
 
 impl Options {
     pub fn run(self) {
+        let two_line_db = TwoLineDb::gen();
+        let four_line_db = FourLineDb::load();
+
         std::fs::create_dir_all("solutions").unwrap();
         (0..NUM_SEEDS).into_par_iter().for_each(|seed| {
-            if std::path::Path::new(&format!("solutions/{:04X}", seed)).exists() {
+            let target = format!("solutions/{:04X}", seed);
+            if std::path::Path::new(&target).exists() {
                 return;
             }
             let queue = gen_queue_ppt1(seed);
 
-            let mut solutions: Vec<_> = solve_sequence(&queue).into();
+            let mut solutions: Vec<_> = solve_sequence(&queue, &two_line_db, &four_line_db).into();
             solutions.sort_by_key(|a| a.score);
 
             let best = match solutions.last() {
                 Some(v) => v,
                 None => return,
             };
+            println!("{:04X}: {}, {}", seed, best.score, best.time,);
 
-            let mut pieces = vec![];
+            let mut placement_set = vec![];
             let mut seq = best.placement_sequence.as_ref();
             while let Some(s) = seq {
-                pieces.push(&s.placements);
+                placement_set.push(s.placements);
                 seq = s.next.as_ref();
             }
-            pieces.reverse();
-            let placement_sequence: Vec<_> = pieces.into_iter().flatten().copied().collect();
+            placement_set.reverse();
 
-            let result = input_sequence(&placement_sequence, &queue);
-            println!("{:04X}: {}, {}", seed, best.score, best.time,);
+            bincode::serialize_into(std::fs::File::create(target).unwrap(), &placement_set)
+                .unwrap();
+        });
+
+        drop(two_line_db);
+        drop(four_line_db);
+
+        let four_line_placements = FourLinePlacementsDb::load();
+
+        (0..NUM_SEEDS).into_par_iter().for_each(|seed| {
+            let file = match std::fs::File::open(format!("solutions/{:04X}", seed)) {
+                Ok(f) => f,
+                Err(_) => return,
+            };
+            let placement_sets: Vec<PlacementSet> = bincode::deserialize_from(file).unwrap();
+            let queue = gen_queue_ppt1(seed);
+
+            let mut placements = vec![];
+            let mut queue_index = 0;
+            for set in placement_sets {
+                match set {
+                    PlacementSet::FivePiece(places) => {
+                        placements.extend_from_slice(&places);
+                        queue_index += 5;
+                    }
+                    PlacementSet::TenPiece(index) => {
+                        let places = four_line_placements.get(
+                            index,
+                            queue[queue_index..queue_index + 10].try_into().unwrap(),
+                        );
+                        placements.extend_from_slice(&places);
+                        queue_index += 10;
+                    }
+                }
+            }
+
+            let result = input_sequence(&placements, &queue);
             write_tas(seed, &result[2..]);
         });
     }
@@ -66,7 +105,7 @@ struct SolveState {
 
 struct PlacementSequenceList {
     next: Option<Rc<PlacementSequenceList>>,
-    placements: ArrayVec<(Placement, Option<u32>), 15>,
+    placements: PlacementSet,
 }
 
 impl Dominance for SolveState {
@@ -81,33 +120,29 @@ struct Layer {
     empty_hold: Archive<SolveState>,
 }
 
-fn input_sequence(
-    placements: &[(Placement, Option<u32>)],
-    queue: &[Piece],
-) -> Vec<(EnumSet<Input>, Option<u32>)> {
+#[derive(Copy, Clone, Serialize, Deserialize)]
+pub enum PlacementSet {
+    FivePiece([Placement; 5]),
+    TenPiece(u32),
+}
+
+fn input_sequence(placements: &[Placement], queue: &[Piece]) -> Vec<EnumSet<Input>> {
     let mut inputs = vec![];
     let mut queue = queue;
     let mut has_done_hold = false;
     let mut board = Board([0; 10]);
-    for &(placement, score) in placements {
-        inputs.extend_from_slice(&[(EnumSet::empty(), None); SPAWN_DELAY as usize]);
+    for &placement in placements {
+        inputs.extend_from_slice(&[EnumSet::empty(); SPAWN_DELAY as usize]);
         if placement.piece != queue[0] {
-            inputs.push((EnumSet::only(Input::Hold), None));
+            inputs.push(EnumSet::only(Input::Hold));
             if !has_done_hold {
                 has_done_hold = true;
-                inputs.extend_from_slice(&[(EnumSet::empty(), None); SPAWN_DELAY as usize]);
+                inputs.extend_from_slice(&[EnumSet::empty(); SPAWN_DELAY as usize]);
                 queue = &queue[1..];
             }
         }
         queue = &queue[1..];
-        inputs.extend(
-            pathfind(&board, placement)
-                .unwrap()
-                .1
-                .into_iter()
-                .map(|i| (i, None)),
-        );
-        inputs.last_mut().unwrap().1 = score;
+        inputs.append(&mut pathfind(&board, placement).unwrap().1);
         for c in placement.cells() {
             board.fill(c);
         }
@@ -119,18 +154,18 @@ fn input_sequence(
         }
         let delay = line_clear_delay(clears.count_ones(), board == Board([0; 10]));
         for _ in 0..delay {
-            inputs.push((EnumSet::empty(), None));
+            inputs.push(EnumSet::empty());
         }
     }
     inputs
 }
 
-fn write_tas(seed: u32, inputs: &[(EnumSet<Input>, Option<u32>)]) {
+fn write_tas(seed: u32, inputs: &[EnumSet<Input>]) {
     let mut file =
         std::io::BufWriter::new(std::fs::File::create(format!("solutions/{:04X}", seed)).unwrap());
 
     file.write(format!("{:04X}\n", seed).as_bytes()).unwrap();
-    for &(frame, score) in inputs {
+    for &frame in inputs {
         if frame.is_empty() {
             file.write_all(b"_").unwrap();
         }
@@ -145,19 +180,15 @@ fn write_tas(seed: u32, inputs: &[(EnumSet<Input>, Option<u32>)]) {
                 Input::Hold => file.write_all(b"H").unwrap(),
             };
         }
-        if let Some(score) = score {
-            file.write_all(b" ").unwrap();
-            file.write_all(format!("{}", score).as_bytes()).unwrap();
-        }
         file.write_all(b"\n").unwrap();
     }
 }
 
-fn solve_sequence(queue: &[Piece]) -> Archive<SolveState> {
-    let twoline_db = TwoLineDb::gen();
-
-    let mut fourline_db = FourLineDb::open();
-
+fn solve_sequence(
+    queue: &[Piece],
+    twoline_db: &TwoLineDb,
+    fourline_db: &FourLineDb,
+) -> Archive<SolveState> {
     let mut start_layer = Layer::default();
     start_layer.empty_hold.add(SolveState::default());
 
@@ -175,14 +206,14 @@ fn solve_sequence(queue: &[Piece]) -> Archive<SolveState> {
                 continue;
             }
             let mut edges = Edges::new();
-            twoline_edges(&mut edges, &twoline_db, Some(p), &queue[1..]);
-            fourline_edges(&mut edges, &mut fourline_db, Some(p), &queue[1..]);
+            twoline_edges(&mut edges, twoline_db, Some(p), &queue[1..]);
+            fourline_edges(&mut edges, fourline_db, Some(p), &queue[1..]);
             advance_edges(&mut finish_states, &mut layers, starts, &edges);
         }
         if !layer.empty_hold.is_empty() {
             let mut edges = Edges::new();
-            twoline_edges(&mut edges, &twoline_db, None, queue);
-            fourline_edges(&mut edges, &mut fourline_db, None, queue);
+            twoline_edges(&mut edges, twoline_db, None, queue);
+            fourline_edges(&mut edges, fourline_db, None, queue);
             advance_edges(&mut finish_states, &mut layers, &layer.empty_hold, &edges);
         }
 
@@ -209,7 +240,7 @@ fn twoline_edges(
                 b2b: false,
                 valid_b2b: true,
                 valid_nob2b: true,
-                placements: entry.placements.iter().copied().collect(),
+                placements: PlacementSet::FivePiece(entry.placements),
             });
         }
     });
@@ -217,7 +248,7 @@ fn twoline_edges(
 
 fn fourline_edges(
     edges: &mut edges::Edges,
-    fourline_db: &mut FourLineDb,
+    fourline_db: &FourLineDb,
     hold: Option<Piece>,
     queue: &[Piece],
 ) {
@@ -231,7 +262,7 @@ fn fourline_edges(
                 b2b: entry.end_b2b,
                 valid_b2b: entry.valid_b2b,
                 valid_nob2b: entry.valid_nob2b,
-                placements: entry.placements.iter().copied().collect(),
+                placements: PlacementSet::TenPiece(entry.index),
             });
         }
     });
@@ -255,11 +286,10 @@ fn advance_edges(
             }
             had_successor = true;
 
-            let mut placement_sequence = PlacementSequenceList {
+            let placement_sequence = PlacementSequenceList {
                 next: start.placement_sequence.clone(),
-                placements: edge.placements.iter().map(|&p| (p, None)).collect(),
+                placements: edge.placements,
             };
-            placement_sequence.placements.last_mut().unwrap().1 = Some(start.score + edge.score);
             let result_state = SolveState {
                 score: start.score + edge.score,
                 time: start.time + edge.time,
@@ -267,11 +297,10 @@ fn advance_edges(
                 b2b: edge.b2b,
             };
 
-            let layer_idx = match edge.placements.len() {
-                5 => 0,
-                10 => 1,
-                15 => 2,
-                _ => unreachable!(),
+            let layer_idx = match edge.placements {
+                PlacementSet::FivePiece(_) => 0,
+                PlacementSet::TenPiece(_) => 1,
+                // PlacementSet::FifteenPiece(_) => 2,
             };
             let layer = &mut layers[layer_idx];
             let archive = match edge.hold {

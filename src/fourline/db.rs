@@ -1,19 +1,18 @@
+use std::convert::TryInto;
+
 use arrayvec::ArrayVec;
-use once_cell::sync::Lazy;
 
 use crate::data::{Piece, Placement};
-use crate::fourline::LargeDbEntry;
 
-use super::{compute_index, Entry, SmallDbEntry};
-
-static DATABASE: Lazy<(Vec<u8>, Vec<u8>)> = Lazy::new(|| {
-    let index = std::fs::read("4ldb-index.dat").unwrap();
-    let data = std::fs::read("4ldb-data.dat").unwrap();
-    (index, data)
-});
+use super::{compute_index, DataEntry, IndexEntry};
 
 pub struct FourLineDb {
-    _priv: (),
+    index: Vec<IndexEntry>,
+    data: Vec<DataEntry>,
+}
+
+pub struct FourLinePlacementsDb {
+    data: Vec<[u8; 10]>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -23,53 +22,56 @@ pub struct DbEntry {
     pub end_b2b: bool,
     pub valid_nob2b: bool,
     pub valid_b2b: bool,
-    pub placements: [Placement; 10],
+    pub index: u32,
 }
 
 impl FourLineDb {
-    pub fn open() -> Self {
-        Lazy::force(&DATABASE);
-        FourLineDb { _priv: () }
+    pub fn load() -> Self {
+        FourLineDb {
+            index: bytemuck::allocation::cast_vec(std::fs::read("4ldb-index.dat").unwrap()),
+            data: bytemuck::allocation::cast_vec(std::fs::read("4ldb-data.dat").unwrap()),
+        }
     }
 
-    pub fn query(&mut self, queue: [Piece; 10]) -> Vec<DbEntry> {
+    pub fn query(&self, queue: [Piece; 10]) -> Vec<DbEntry> {
         let index = compute_index(queue);
 
-        let entry: &LargeDbEntry =
-            bytemuck::from_bytes(&DATABASE.0[16 * index as usize..16 * (index + 1) as usize]);
-
-        match entry.len {
-            0 => vec![],
-            1 => vec![convert(
-                &queue,
-                bytemuck::cast_ref::<_, SmallDbEntry>(entry).entry,
-            )],
-            _ => {
-                let entries = bytemuck::cast_slice(
-                    &DATABASE.1[entry.offset as usize
-                        ..entry.offset as usize
-                            + entry.len as usize * std::mem::size_of::<Entry>()],
-                );
-                entries.iter().map(|&e| convert(&queue, e)).collect()
-            }
-        }
+        let entry = self.index[index];
+        self.data
+            .iter()
+            .enumerate()
+            .skip(entry.index as usize)
+            .take(entry.len as usize)
+            .map(convert)
+            .collect()
     }
 }
 
-fn convert(queue: &[Piece; 10], raw_entry: Entry) -> DbEntry {
+fn convert((index, raw_entry): (usize, &DataEntry)) -> DbEntry {
     DbEntry {
         time: raw_entry.time() as u32,
         score: raw_entry.score as u32,
         end_b2b: raw_entry.b2b(),
         valid_b2b: raw_entry.valid_b2b(),
         valid_nob2b: raw_entry.valid_nob2b(),
-        placements: raw_entry
-            .placements
+        index: index.try_into().unwrap(),
+    }
+}
+
+impl FourLinePlacementsDb {
+    pub fn load() -> Self {
+        FourLinePlacementsDb {
+            data: bytemuck::allocation::cast_vec(std::fs::read("4ldb-placements.dat").unwrap()),
+        }
+    }
+
+    pub fn get(&self, index: u32, queue: [Piece; 10]) -> [Placement; 10] {
+        self.data[index as usize]
             .iter()
             .zip(queue.iter())
             .map(|(&packed, &piece)| Placement::unpack(packed, piece))
             .collect::<ArrayVec<_, 10>>()
             .into_inner()
-            .unwrap(),
+            .unwrap_or_else(|_| unreachable!())
     }
 }
