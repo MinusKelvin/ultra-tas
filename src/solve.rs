@@ -25,8 +25,11 @@ pub struct Options {}
 
 impl Options {
     pub fn run(self) {
-        std::fs::create_dir_all("soln").unwrap();
+        std::fs::create_dir_all("solutions").unwrap();
         (0..NUM_SEEDS).into_par_iter().for_each(|seed| {
+            if std::path::Path::new(&format!("solutions/{:04X}", seed)).exists() {
+                return;
+            }
             let queue = gen_queue_ppt1(seed);
 
             let mut solutions: Vec<_> = solve_sequence(&queue).into();
@@ -124,7 +127,7 @@ fn input_sequence(
 
 fn write_tas(seed: u32, inputs: &[(EnumSet<Input>, Option<u32>)]) {
     let mut file =
-        std::io::BufWriter::new(std::fs::File::create(format!("soln/{:04X}", seed)).unwrap());
+        std::io::BufWriter::new(std::fs::File::create(format!("solutions/{:04X}", seed)).unwrap());
 
     file.write(format!("{:04X}\n", seed).as_bytes()).unwrap();
     for &(frame, score) in inputs {
