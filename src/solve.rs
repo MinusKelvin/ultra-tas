@@ -30,7 +30,7 @@ impl Options {
 
         std::fs::create_dir_all("solutions").unwrap();
         (0..NUM_SEEDS).into_par_iter().for_each(|seed| {
-            let target = format!("solutions/{:04X}", seed);
+            let target = format!("solutions/{:04X}.bin", seed);
             if std::path::Path::new(&target).exists() {
                 return;
             }
@@ -62,8 +62,13 @@ impl Options {
 
         let four_line_placements = FourLinePlacementsDb::load();
 
+        std::fs::create_dir_all("tases").unwrap();
         (0..NUM_SEEDS).into_par_iter().for_each(|seed| {
-            let file = match std::fs::File::open(format!("solutions/{:04X}", seed)) {
+            let target = format!("tases/{:04X}", seed);
+            if std::path::Path::new(&target).exists() {
+                return;
+            }
+            let file = match std::fs::File::open(format!("solutions/{:04X}.bin", seed)) {
                 Ok(f) => f,
                 Err(_) => return,
             };
@@ -77,10 +82,7 @@ impl Options {
                         placements.extend_from_slice(&places);
                     }
                     PlacementSet::TenPiece(index, queue) => {
-                        placements.extend_from_slice(&four_line_placements.get(
-                            index,
-                            queue,
-                        ));
+                        placements.extend_from_slice(&four_line_placements.get(index, queue));
                     }
                 }
             }
@@ -158,7 +160,7 @@ fn input_sequence(placements: &[Placement], queue: &[Piece]) -> Vec<EnumSet<Inpu
 
 fn write_tas(seed: u32, inputs: &[EnumSet<Input>]) {
     let mut file =
-        std::io::BufWriter::new(std::fs::File::create(format!("solutions/{:04X}", seed)).unwrap());
+        std::io::BufWriter::new(std::fs::File::create(format!("tases/{:04X}", seed)).unwrap());
 
     file.write(format!("{:04X}\n", seed).as_bytes()).unwrap();
     for &frame in inputs {
