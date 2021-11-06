@@ -80,9 +80,17 @@ fn convert((index, raw_entry): (usize, &DataEntry)) -> DbEntry {
 
 impl FourLinePlacementsDb {
     pub fn load() -> Self {
-        FourLinePlacementsDb {
-            data: bytemuck::allocation::cast_vec(std::fs::read("4ldb-placements.dat").unwrap()),
+        let mut data_file =
+            std::io::BufReader::new(std::fs::File::open("4ldb-placements.dat").unwrap());
+        let mut data = vec![];
+        let mut buffer = [0; 10];
+        while data_file
+            .read_exact(bytemuck::bytes_of_mut(&mut buffer))
+            .is_ok()
+        {
+            data.push(buffer);
         }
+        FourLinePlacementsDb { data }
     }
 
     pub fn get(&self, index: u32, queue: [Piece; 10]) -> [Placement; 10] {
