@@ -45,6 +45,7 @@ impl Options {
                 if r.len() != 10 {
                     panic!("bad length");
                 }
+                let r: Vec<_> = r.into_iter().map(From::from).collect();
                 let seq = r.try_into().unwrap();
                 let t = std::time::Instant::now();
                 let db = db::FourLineDb::load();

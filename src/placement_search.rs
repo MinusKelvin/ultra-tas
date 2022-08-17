@@ -17,7 +17,7 @@ pub fn find_placement_sequences(
     }
     for i in 0..remaining.len() {
         let placement = remaining[i];
-        if !placement.supported(board) {
+        if !placement.supported_after_clears(board) {
             continue;
         }
 

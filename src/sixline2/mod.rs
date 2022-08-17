@@ -1,18 +1,35 @@
 use std::collections::HashSet;
 use std::slice::Iter;
+use std::sync::atomic::{AtomicBool, Ordering, AtomicU64};
 
-use pcf::{Piece, PieceSet};
+use pcf::{BitBoard, Piece, PieceSet};
 use structopt::StructOpt;
+
+use crate::parse_seq;
 
 #[derive(StructOpt)]
 pub enum Options {
     GenSets,
+    CountCombos { set: String },
 }
 
 impl Options {
     pub fn run(self) {
         match self {
             Options::GenSets => gen_sets(),
+            Options::CountCombos { set } => {
+                let mut s = PieceSet::default();
+                for p in parse_seq(&set).unwrap() {
+                    s = s.with(p);
+                }
+
+                let t = std::time::Instant::now();
+                let count = AtomicU64::new(0);
+                pcf::find_combinations_mt(s, BitBoard(0), &AtomicBool::new(false), 6, |_| {
+                    count.fetch_add(1, Ordering::Relaxed);
+                });
+                dbg!(count.into_inner(), t.elapsed());
+            }
         }
     }
 }

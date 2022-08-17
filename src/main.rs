@@ -1,4 +1,4 @@
-use data::Piece;
+use pcf::Piece;
 use structopt::StructOpt;
 
 mod archive;

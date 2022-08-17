@@ -36,6 +36,7 @@ impl Options {
                 if r.len() != 15 {
                     panic!("bad length");
                 }
+                let r: Vec<_> = r.into_iter().map(From::from).collect();
                 let seq = r.try_into().unwrap();
                     let t = std::time::Instant::now();
                     let mut db = db::SixLineDb::open();
