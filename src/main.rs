@@ -1,5 +1,3 @@
-use std::mem::MaybeUninit;
-
 use data::Piece;
 use structopt::StructOpt;
 
@@ -7,15 +5,18 @@ mod archive;
 mod data;
 mod fourline;
 mod pathfind;
-mod sixline;
-mod solve;
 mod placement_search;
+mod sixline;
+mod sixline2;
+mod solve;
 mod twoline;
 
 #[derive(StructOpt)]
 pub enum Command {
     /// TSD-Tetris PC database generation commands
     SixLine(sixline::Options),
+    /// 6-line PC database generation commands
+    SixLine2(sixline2::Options),
     /// 4-line PC database generation commands
     FourLine(fourline::Options),
     /// Solve an Ultra piece sequence
@@ -25,6 +26,7 @@ pub enum Command {
 pub fn main() {
     match Command::from_args() {
         Command::SixLine(subcommand) => subcommand.run(),
+        Command::SixLine2(subcommand) => subcommand.run(),
         Command::FourLine(subcommand) => subcommand.run(),
         Command::Solve(subcommand) => subcommand.run(),
     }
@@ -40,14 +42,9 @@ impl<A, B, const N: usize> ArrayExt<A, B> for [A; N] {
     type Map = [B; N];
 
     fn azip(self, other: Self, mut f: impl FnMut(A, A) -> B) -> [B; N] {
-        let mut result: [MaybeUninit<B>; N] = unsafe { MaybeUninit::uninit().assume_init() };
-        for (i, (a, b)) in std::array::IntoIter::new(self)
-            .zip(std::array::IntoIter::new(other))
-            .enumerate()
-        {
-            result[i] = MaybeUninit::new(f(a, b));
-        }
-        unsafe { std::mem::transmute_copy(&result) }
+        let mut iter_a = self.into_iter();
+        let mut iter_b = other.into_iter();
+        std::array::from_fn(|_| f(iter_a.next().unwrap(), iter_b.next().unwrap()))
     }
 }
 
