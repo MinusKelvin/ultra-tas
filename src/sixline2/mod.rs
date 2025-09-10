@@ -1,6 +1,8 @@
+mod packings;
+
 use std::collections::HashSet;
 use std::slice::Iter;
-use std::sync::atomic::{AtomicBool, Ordering, AtomicU64};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use pcf::{BitBoard, Piece, PieceSet};
 use structopt::StructOpt;
@@ -11,12 +13,20 @@ use crate::parse_seq;
 pub enum Options {
     GenSets,
     CountCombos { set: String },
+    GenPackings,
 }
 
 impl Options {
     pub fn run(self) {
         match self {
-            Options::GenSets => gen_sets(),
+            Options::GenSets => {
+                let sets = gen_sets();
+                let mut sets: Vec<_> = sets.into_iter().collect();
+                sets.sort_by_key(|s| s.0);
+                for set in sets {
+                    println!("{set}");
+                }
+            }
             Options::CountCombos { set } => {
                 let mut s = PieceSet::default();
                 for p in parse_seq(&set).unwrap() {
@@ -30,11 +40,12 @@ impl Options {
                 });
                 dbg!(count.into_inner(), t.elapsed());
             }
+            Options::GenPackings => packings::gen_packings(),
         }
     }
 }
 
-fn gen_sets() {
+fn gen_sets() -> HashSet<PieceSet> {
     let mut bags: [_; 7] = std::array::from_fn(|_| vec![]);
     for i in 0..7 {
         gen_bag(i, |bag| bags[i].push(bag));
@@ -64,11 +75,7 @@ fn gen_sets() {
         }
     }
 
-    let mut sets: Vec<_> = sets.into_iter().collect();
-    sets.sort_by_key(|s| s.0);
-    for s in sets {
-        println!("{s}");
-    }
+    sets
 }
 
 fn gen_bag(size: usize, mut f: impl FnMut(PieceSet)) {
