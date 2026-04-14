@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use bytemuck::{Pod, Zeroable};
-use pcf::{BitBoard, PieceSet, Placement};
+use pcf::{BitBoard, Piece, PieceSet, Placement, Rotation};
 
 use crate::sixline2::gen_sets;
 
@@ -38,9 +38,15 @@ pub fn gen_packings() {
         BitBoard(0),
         &AtomicBool::new(false),
         6,
-        |placements, _, _, _, _| packing_could_support_tsd_tetris(placements),
+        |placements, _, _, _, _| packing_has_viable_hurdles(placements),
         |placements| {
-            if !packing_could_support_tsd_tetris(placements) {
+            if !packing_has_viable_hurdles(placements) {
+                return;
+            }
+            if !packing_has_t_placement(placements) {
+                return;
+            }
+            if !packing_has_i_placement(placements) {
                 return;
             }
             let c = count.fetch_add(1, Ordering::Relaxed) + 1;
@@ -63,7 +69,7 @@ pub fn gen_packings() {
                 valid_count.fetch_add(1, Ordering::Relaxed);
             }
 
-            if c % 100_000 == 0 {
+            if c % 10_000 == 0 {
                 let valid = valid_count.load(Ordering::Relaxed);
                 let d = t.elapsed();
                 print!(
@@ -89,7 +95,7 @@ pub fn gen_packings() {
     );
 }
 
-fn packing_could_support_tsd_tetris(placements: &[Placement]) -> bool {
+fn packing_has_viable_hurdles(placements: &[Placement]) -> bool {
     let hurdles = placements.iter().fold(0, |a, p| a | p.kind.hurdles());
 
     if hurdles == 0 {
@@ -105,20 +111,74 @@ fn packing_could_support_tsd_tetris(placements: &[Placement]) -> bool {
         .all(|p| p.kind.hurdles() == 0 || p.kind.hurdles() == hurdles)
 }
 
+fn packing_has_t_placement(placements: &[Placement]) -> bool {
+    let top_row = BitBoard::filled(6).remove(BitBoard::filled(5));
+    let hurdles = placements.iter().fold(0, |a, p| a | p.kind.hurdles());
+
+    for piece in placements {
+        // only ordinary T-slots are considered
+        if piece.kind.piece() == Piece::T
+            && piece.kind.piece_srs()[0].rotation == Rotation::South
+            // T-spin is the only allowed clear, so the piece must not hurdle anything
+            && piece.kind.hurdles() == 0
+            // T-spin is not possible if the T is in the top row
+            && !piece.kind.board().overlaps(top_row)
+            // If there are hurdles, then the T must be in the row where the hurdle happens
+            && (hurdles == 0 || piece.kind.y() as u32 == hurdles.trailing_zeros())
+        {
+            // check that at least one corner cell is filled by a piece which is not hurdled
+            let corner_y = piece.kind.y() as usize + 2;
+            let corner_x = piece.x as usize;
+
+            for piece in placements {
+                // such a placement must occur before the T-spin, so it must not hurdle
+                // additionally, it must fill a corner
+                if piece.kind.hurdles() == 0
+                    && (piece.board().cell_filled(corner_x, corner_y)
+                        || piece.board().cell_filled(corner_x + 2, corner_y))
+                    && !piece.board().cell_filled(corner_x + 1, corner_y)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
+fn packing_has_i_placement(placements: &[Placement]) -> bool {
+    let hurdles = placements.iter().fold(0, |a, p| a | p.kind.hurdles());
+
+    for piece in placements {
+        // note: first srs piece for I is always West orientation
+        if piece.kind.piece() == Piece::I
+            && piece.kind.piece_srs()[0].rotation == Rotation::West
+            // I must hurdle T-spin in order to perform tetris afterwards
+            && piece.kind.hurdles() == hurdles
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 #[repr(C)]
-struct RawPlacement(u16);
+pub struct RawPlacement([u8; 2]);
 
 impl From<Placement> for RawPlacement {
     fn from(value: Placement) -> Self {
-        RawPlacement(value.kind as u16 | (value.x as u16) << 9)
+        RawPlacement((value.kind as u16 | (value.x as u16) << 9).to_le_bytes())
     }
 }
 
 impl From<RawPlacement> for Placement {
     fn from(value: RawPlacement) -> Self {
-        let kind = value.0 & 0x1FF;
-        let x = value.0 >> 9;
+        let raw = u16::from_le_bytes(value.0);
+        let kind = raw & 0x1FF;
+        let x = raw >> 9;
         Placement {
             kind: unsafe {
                 assert!(kind <= pcf::PieceState::IHorizontal5 as u16);

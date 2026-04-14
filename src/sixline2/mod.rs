@@ -1,6 +1,8 @@
 mod packings;
+mod placements;
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::slice::Iter;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
@@ -14,6 +16,7 @@ pub enum Options {
     GenSets,
     CountCombos { set: String },
     GenPackings,
+    ComputePlacements { packings_file: PathBuf },
 }
 
 impl Options {
@@ -41,7 +44,36 @@ impl Options {
                 dbg!(count.into_inner(), t.elapsed());
             }
             Options::GenPackings => packings::gen_packings(),
+            Options::ComputePlacements { packings_file } => {
+                placements::compute_placements(packings_file);
+            }
         }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+struct PackedPieceSeq {
+    raw: u64,
+}
+
+impl From<[Piece; 15]> for PackedPieceSeq {
+    fn from(value: [Piece; 15]) -> Self {
+        let mut v = 0;
+        for i in 0..value.len() {
+            v |= (value[i] as u64) << 3 * i;
+        }
+        PackedPieceSeq { raw: v }
+    }
+}
+
+impl From<PackedPieceSeq> for [Piece; 15] {
+    fn from(value: PackedPieceSeq) -> Self {
+        let mut result = [Piece::S; 15];
+        for i in 0..result.len() {
+            let p = value.raw >> 3 * i & 7;
+            result[i] = Piece::from(p as usize);
+        }
+        result
     }
 }
 
