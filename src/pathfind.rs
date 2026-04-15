@@ -2,6 +2,7 @@ use std::collections::hash_map::Entry;
 use std::collections::BinaryHeap;
 
 use arrayvec::ArrayVec;
+use bumpalo::Bump;
 use enumset::{EnumSet, EnumSetType};
 use foldhash::HashMap;
 
@@ -18,17 +19,49 @@ pub enum Input {
     Hold,
 }
 
+#[derive(Default)]
+struct InputListNode<'a> {
+    value: Option<(EnumSet<Input>, InputList<'a>)>,
+    len: usize,
+}
+type InputList<'a> = &'a InputListNode<'a>;
+
+impl<'a> InputListNode<'a> {
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    fn push(self: &mut InputList<'a>, v: EnumSet<Input>, bump: &'a Bump) {
+        *self = bump.alloc(InputListNode {
+            value: Some((v, self)),
+            len: self.len + 1,
+        });
+    }
+
+    fn iter(&self) -> impl Iterator<Item = EnumSet<Input>> + use<'_> {
+        let mut next = self;
+        std::iter::from_fn(move || {
+            let (v, n) = next.value.as_ref()?;
+            next = n;
+            Some(*v)
+        })
+    }
+}
+
 pub fn pathfind(board: &Board, placement: Placement) -> Option<(u32, Vec<EnumSet<Input>>)> {
+    let bump = Bump::new();
+    let empty = bump.alloc(InputListNode::default());
+
     let mut best: Option<(u32, Vec<_>)> = None;
 
-    let mut reverse_paths = HashMap::<_, (u32, Vec<EnumSet<_>>)>::default();
+    let mut reverse_paths = HashMap::<_, (u32, InputList)>::default();
     let mut queue = BinaryHeap::new();
 
     let starting_vertex = Vertex {
         place: placement,
         next_input: EnumSet::empty(),
     };
-    reverse_paths.insert(starting_vertex, (0, vec![]));
+    reverse_paths.insert(starting_vertex, (0, empty));
     queue.push(QueueItem {
         vertex: starting_vertex,
         inputs: 0,
@@ -39,7 +72,7 @@ pub fn pathfind(board: &Board, placement: Placement) -> Option<(u32, Vec<EnumSet
             place: placement,
             next_input: EnumSet::empty(),
         };
-        reverse_paths.insert(starting_vertex, (0, vec![]));
+        reverse_paths.insert(starting_vertex, (0, empty));
         queue.push(QueueItem {
             vertex: starting_vertex,
             inputs: 0,
@@ -62,7 +95,9 @@ pub fn pathfind(board: &Board, placement: Placement) -> Option<(u32, Vec<EnumSet
             let mut score = score + distance;
             if item.inputs != 0 {
                 add_soft_drop(&mut path, (top_y - item.vertex.place.y) as usize);
-                path.extend(rev_path.into_iter().rev());
+                let start = path.len();
+                path.extend(rev_path.iter());
+                path[start..].reverse();
             } else {
                 score += distance;
             }
@@ -80,17 +115,17 @@ pub fn pathfind(board: &Board, placement: Placement) -> Option<(u32, Vec<EnumSet
                 place,
                 next_input: inputs,
             };
-            let mut rev_path = rev_path.clone();
+            let mut rev_path = rev_path;
             let mut score = score;
             if inputs.contains(Input::HardDrop) {
                 score += 2;
             } else if inputs.contains(Input::Softdrop) {
                 score += 1;
-                rev_path.push(inputs);
-                rev_path.push(inputs);
-                rev_path.push(inputs);
+                rev_path.push(inputs, &bump);
+                rev_path.push(inputs, &bump);
+                rev_path.push(inputs, &bump);
             } else {
-                rev_path.push(inputs);
+                rev_path.push(inputs, &bump);
             }
             match reverse_paths.entry(vertex) {
                 Entry::Occupied(mut e) => {
