@@ -118,11 +118,26 @@ impl Placement {
                 1 => Rotation::East,
                 2 => Rotation::South,
                 3 => Rotation::West,
-                _ => unreachable!()
+                _ => unreachable!(),
             },
             x: ((packed >> 2) % 10) as i8,
             y: ((packed >> 2) / 10) as i8,
         }
+    }
+
+    #[inline(always)]
+    pub fn valid_coordinates(self) -> (i8, i8, i8) {
+        const LJSZT: [(i8, i8, i8); 4] = [(1, 9, 0), (0, 9, 1), (1, 9, 1), (1, 10, 1)];
+        static LUT: [[(i8, i8, i8); 4]; 7] = [
+            [(1, 8, 0), (0, 10, 2), (2, 9, 0), (0, 10, 1)],
+            [(0, 9, 0), (0, 9, 1), (1, 10, 1), (1, 10, 0)],
+            LJSZT,
+            LJSZT,
+            LJSZT,
+            LJSZT,
+            LJSZT,
+        ];
+        LUT[self.piece][self.rotation]
     }
 
     #[inline(always)]
@@ -172,7 +187,7 @@ impl Placement {
             rotations(Piece::S),
             rotations(Piece::Z),
         ];
-        LUT[self.piece as usize][self.rotation as usize].map(|(x, y)| (x + self.x, y + self.y))
+        LUT[self.piece][self.rotation].map(|(x, y)| (x + self.x, y + self.y))
     }
 
     #[inline(always)]
@@ -187,14 +202,12 @@ impl Placement {
     }
 
     pub fn obstructed(self, b: &Board) -> bool {
-        if !self.valid_x_span().contains(&self.x) {
+        let (min_x, max_x, min_y) = self.valid_coordinates();
+        if self.x < min_x || self.x >= max_x || self.y < min_y {
             return true;
         }
         for (x, y) in self.cells() {
-            if y < 0 {
-                return true;
-            }
-            if b.0[x as usize] & 1 << y != 0 {
+            if unsafe { *b.0.get_unchecked(x as usize) } & 1 << y != 0 {
                 return true;
             }
         }
@@ -443,5 +456,33 @@ impl From<pcf::Rotation> for Rotation {
             pcf::Rotation::South => Rotation::South,
             pcf::Rotation::West => Rotation::West,
         }
+    }
+}
+
+impl<T> std::ops::Index<Piece> for [T; 7] {
+    type Output = T;
+
+    fn index(&self, index: Piece) -> &Self::Output {
+        unsafe { self.get_unchecked(index as usize) }
+    }
+}
+
+impl<T> std::ops::IndexMut<Piece> for [T; 7] {
+    fn index_mut(&mut self, index: Piece) -> &mut Self::Output {
+        unsafe { self.get_unchecked_mut(index as usize) }
+    }
+}
+
+impl<T> std::ops::Index<Rotation> for [T; 4] {
+    type Output = T;
+
+    fn index(&self, index: Rotation) -> &Self::Output {
+        unsafe { self.get_unchecked(index as usize) }
+    }
+}
+
+impl<T> std::ops::IndexMut<Rotation> for [T; 4] {
+    fn index_mut(&mut self, index: Rotation) -> &mut Self::Output {
+        unsafe { self.get_unchecked_mut(index as usize) }
     }
 }

@@ -199,7 +199,7 @@ fn solve_sequence(
 
     while let Some(layer) = layers.pop_front() {
         for p in Piece::ALL {
-            let starts = &layer.hold_piece[p as usize];
+            let starts = &layer.hold_piece[p];
             if starts.is_empty() {
                 continue;
             }
@@ -303,7 +303,7 @@ fn advance_edges(
             let layer = &mut layers[layer_idx];
             let archive = match edge.hold {
                 None => &mut layer.empty_hold,
-                Some(p) => &mut layer.hold_piece[p as usize],
+                Some(p) => &mut layer.hold_piece[p],
             };
 
             archive.add(result_state);
