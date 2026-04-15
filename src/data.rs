@@ -163,7 +163,7 @@ impl Placement {
                 rotate(piece.cells(), Rotation::West),
             ]
         }
-        const LUT: [[[(i8, i8); 4]; 4]; 7] = [
+        static LUT: [[[(i8, i8); 4]; 4]; 7] = [
             rotations(Piece::I),
             rotations(Piece::O),
             rotations(Piece::T),
@@ -187,8 +187,11 @@ impl Placement {
     }
 
     pub fn obstructed(self, b: &Board) -> bool {
+        if !self.valid_x_span().contains(&self.x) {
+            return true;
+        }
         for (x, y) in self.cells() {
-            if x < 0 || x >= 10 || y < 0 {
+            if y < 0 {
                 return true;
             }
             if b.0[x as usize] & 1 << y != 0 {
