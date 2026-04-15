@@ -126,6 +126,7 @@ fn generate_batches(start: usize, end: usize) {
                 0,
                 false,
                 0,
+                false,
             );
             find_placement_sequences(
                 &mut vec![],
@@ -136,6 +137,7 @@ fn generate_batches(start: usize, end: usize) {
                 0,
                 true,
                 0,
+                false,
             );
         });
         println!("Batch {} took {:.2?}", i, t.elapsed());

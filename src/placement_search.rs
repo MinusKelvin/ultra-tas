@@ -1,5 +1,5 @@
 use crate::data::*;
-use crate::pathfind::{Input, pathfind};
+use crate::pathfind::{pathfind, Input};
 
 pub fn find_placement_sequences(
     current: &mut Vec<Placement>,
@@ -10,6 +10,7 @@ pub fn find_placement_sequences(
     time: u32,
     b2b: bool,
     combo: u32,
+    tsd_tetris_only: bool,
 ) {
     if remaining.is_empty() {
         found(current, score, time, b2b);
@@ -30,10 +31,9 @@ pub fn find_placement_sequences(
                 }
             }
         }
-    
 
         let place = placement.srs_piece(board)[0].into();
-        let info = match evaluate(b, place, b2b, combo) {
+        let info = match evaluate(b, place, b2b, combo, tsd_tetris_only) {
             Some(info) => info,
             None => continue,
         };
@@ -52,6 +52,7 @@ pub fn find_placement_sequences(
             time + info.time,
             info.b2b,
             info.combo,
+            tsd_tetris_only,
         );
 
         current.pop();
@@ -62,11 +63,32 @@ pub fn find_placement_sequences(
 }
 
 fn evaluate(
-    mut board: Board,
+    board: Board,
     place: Placement,
     b2b: bool,
     combo: u32,
+    tsd_tetris_only: bool,
 ) -> Option<PlacementEvaluation> {
+    let mut board_placed = board;
+    for c in place.cells() {
+        board_placed.fill(c);
+    }
+
+    let perfect_clear = board_placed.0 == [board_placed.line_clears(); 10];
+    let lines_cleared = board_placed.line_clears().count_ones();
+    let combo = match lines_cleared == 0 {
+        true => 0,
+        false => combo + 1,
+    };
+    let combo_score = (combo.max(1) - 1) * 50;
+
+    if tsd_tetris_only && (lines_cleared == 1 || lines_cleared == 3) {
+        return None;
+    }
+    if tsd_tetris_only && lines_cleared == 4 && !perfect_clear {
+        return None;
+    }
+
     let (movement_score, movements) = pathfind(&board, place)?;
 
     let mut spin = Spin::Nope;
@@ -101,17 +123,9 @@ fn evaluate(
         }
     }
 
-    for c in place.cells() {
-        board.fill(c);
+    if tsd_tetris_only && lines_cleared == 2 && !matches!(spin, Spin::Full) {
+        return None;
     }
-
-    let perfect_clear = board.0 == [board.line_clears(); 10];
-    let lines_cleared = board.line_clears().count_ones();
-    let combo = match lines_cleared == 0 {
-        true => 0,
-        false => combo + 1,
-    };
-    let combo_score = (combo.max(1) - 1) * 50;
 
     Some(PlacementEvaluation {
         score: movement_score
