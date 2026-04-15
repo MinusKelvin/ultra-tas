@@ -20,6 +20,7 @@ pcf = { git = "https://github.com/MinusKelvin/pcf" }
 smallvec = { version = "1.6.1", features = ["union", "serde"] }
 foldhash = "0.2.0"
 bumpalo = "3.20.2"
+rand = "0.10.1"
 
 [profile.release]
 debug = true
