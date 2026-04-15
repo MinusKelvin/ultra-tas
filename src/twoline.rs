@@ -40,6 +40,8 @@ impl TwoLineDb {
                 false,
                 0,
                 false,
+                None,
+                None,
             );
         });
 

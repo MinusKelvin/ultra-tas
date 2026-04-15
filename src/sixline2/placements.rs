@@ -9,7 +9,7 @@ use pcf::PieceSet;
 use crate::archive::{Archive, Dominance};
 use crate::parse_seq;
 use crate::placement_search::find_placement_sequences;
-use crate::sixline2::packings::RawPlacement;
+use crate::sixline2::packings::{i_placement_may_tetris_pc, t_placement_may_tspin, RawPlacement};
 use crate::sixline2::PackedPieceSeq;
 
 pub fn compute_placements(packings_file: PathBuf) {
@@ -29,13 +29,24 @@ pub fn compute_placements(packings_file: PathBuf) {
     let mut result_counts = HashMap::<_, u64>::default();
     let mut results = HashMap::<_, Archive<_>>::default();
 
-    packings.iter().take(4).for_each(|&packing| {
+    packings.iter().take(100).for_each(|&packing| {
+        let packing: Vec<pcf::Placement> = packing.into_iter().map(From::from).collect();
+        let hurdles = packing.iter().fold(0, |a, p| a | p.kind.hurdles());
+
+        let mut t_candidates = packing.iter()
+            .filter(|p| t_placement_may_tspin(p, hurdles, &packing));
+        let only_t = t_candidates.next().xor(t_candidates.next()).copied();
+
+        let mut i_candidates = packing.iter()
+            .filter(|p| i_placement_may_tetris_pc(p, hurdles));
+        let only_i = i_candidates.next().xor(i_candidates.next()).copied();
+
         let mut non_dominated = HashMap::<_, Archive<_>>::default();
 
         find_placement_sequences(
             &mut vec![],
             pcf::BitBoard(0),
-            &mut packing.into_iter().map(From::from).collect(),
+            &mut packing.clone(),
             &mut |placement, score, time, b2b| {
                 let order: [_; 15] = std::array::from_fn(|i| (placement[i].piece as usize).into());
                 let order = PackedPieceSeq::from(order);
@@ -57,6 +68,8 @@ pub fn compute_placements(packings_file: PathBuf) {
             false,
             0,
             true,
+            only_t,
+            only_i,
         );
 
         let nondom = non_dominated

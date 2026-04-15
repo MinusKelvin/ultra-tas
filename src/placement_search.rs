@@ -11,6 +11,8 @@ pub fn find_placement_sequences(
     b2b: bool,
     combo: u32,
     tsd_tetris_only: bool,
+    only_t: Option<pcf::Placement>,
+    only_i: Option<pcf::Placement>,
 ) {
     if remaining.is_empty() {
         found(current, score, time, b2b);
@@ -20,6 +22,23 @@ pub fn find_placement_sequences(
         let placement = remaining[i];
         if !placement.supported_after_clears(board) {
             continue;
+        }
+
+        let new_board = board.combine(placement.board());
+
+        if only_t.is_some_and(|p| p == placement) {
+            let clears = (0..6)
+                .filter(|&y| new_board.line_filled(y) && !board.line_filled(y))
+                .count();
+            if clears != 2 {
+                continue;
+            }
+        }
+
+        if only_i.is_some_and(|p| p == placement) {
+            if new_board != pcf::BitBoard::filled(6) {
+                continue;
+            }
         }
 
         let cleared = board.lines_cleared();
@@ -38,8 +57,6 @@ pub fn find_placement_sequences(
             None => continue,
         };
 
-        let new_board = board.combine(placement.board());
-
         remaining.swap_remove(i);
         current.push(place);
 
@@ -53,6 +70,8 @@ pub fn find_placement_sequences(
             info.b2b,
             info.combo,
             tsd_tetris_only,
+            only_t,
+            only_i,
         );
 
         current.pop();
