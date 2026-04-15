@@ -1,8 +1,9 @@
 use std::collections::hash_map::Entry;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::BinaryHeap;
 
 use arrayvec::ArrayVec;
 use enumset::{EnumSet, EnumSetType};
+use foldhash::HashMap;
 
 use crate::data::{Board, Piece, Placement, Rotation};
 
@@ -20,7 +21,7 @@ pub enum Input {
 pub fn pathfind(board: &Board, placement: Placement) -> Option<(u32, Vec<EnumSet<Input>>)> {
     let mut best: Option<(u32, Vec<_>)> = None;
 
-    let mut reverse_paths = HashMap::<_, (u32, Vec<EnumSet<_>>)>::new();
+    let mut reverse_paths = HashMap::<_, (u32, Vec<EnumSet<_>>)>::default();
     let mut queue = BinaryHeap::new();
 
     let starting_vertex = Vertex {

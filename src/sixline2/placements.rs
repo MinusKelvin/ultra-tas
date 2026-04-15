@@ -1,9 +1,9 @@
-use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
+use foldhash::HashMap;
 use pcf::PieceSet;
 
 use crate::archive::{Archive, Dominance};
@@ -26,11 +26,11 @@ pub fn compute_placements(packings_file: PathBuf) {
 
     let t = Instant::now();
 
-    let mut result_counts = HashMap::<_, u64>::new();
-    let mut results = HashMap::<_, Archive<_>>::new();
+    let mut result_counts = HashMap::<_, u64>::default();
+    let mut results = HashMap::<_, Archive<_>>::default();
 
-    packings.iter().take(1).for_each(|&packing| {
-        let mut non_dominated = HashMap::<_, Archive<_>>::new();
+    packings.iter().take(4).for_each(|&packing| {
+        let mut non_dominated = HashMap::<_, Archive<_>>::default();
 
         find_placement_sequences(
             &mut vec![],
