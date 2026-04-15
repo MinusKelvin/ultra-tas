@@ -4,7 +4,7 @@ use pcf::{BitBoard, PieceSet};
 
 use crate::archive::{Archive, Dominance};
 use crate::data::{Piece, Placement};
-use crate::placement_search::find_placement_sequences;
+use crate::placement_search::{B2bStatus, find_placement_sequences};
 
 pub struct TwoLineDb {
     db: Vec<Archive<Entry>>,
@@ -26,7 +26,7 @@ impl TwoLineDb {
                 &mut vec![],
                 BitBoard(0),
                 &mut combo.into(),
-                &mut |placements, score, time, _| {
+                &mut |placements, [score, _], time, _| {
                     let placements: [_; 5] = placements.try_into().unwrap();
                     let index = compute_index(placements.map(|p| p.piece)).unwrap();
                     db[index].add(Entry {
@@ -35,9 +35,9 @@ impl TwoLineDb {
                         placements,
                     });
                 },
+                [0; 2],
                 0,
-                0,
-                false,
+                B2bStatus::NoB2b,
                 0,
                 false,
                 None,

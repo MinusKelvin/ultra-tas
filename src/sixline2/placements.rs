@@ -9,7 +9,7 @@ use rand::prelude::*;
 
 use crate::archive::{Archive, Dominance};
 use crate::parse_seq;
-use crate::placement_search::find_placement_sequences;
+use crate::placement_search::{find_placement_sequences, B2bStatus};
 use crate::sixline2::packings::{i_placement_may_tetris_pc, t_placement_may_tspin, RawPlacement};
 use crate::sixline2::PackedPieceSeq;
 
@@ -31,9 +31,10 @@ pub fn compute_placements(packings_file: PathBuf) {
 
     let t = Instant::now();
 
-    let mut results = HashMap::<_, Archive<_>>::default();
+    let mut results_nob2b = HashMap::<_, Archive<_>>::default();
+    let mut results_b2b = HashMap::<_, Archive<_>>::default();
 
-    packings.iter().take(10).for_each(|&packing| {
+    packings.iter().take(100).for_each(|&packing| {
         let packing: Vec<pcf::Placement> = packing.into_iter().map(From::from).collect();
         let hurdles = packing.iter().fold(0, |a, p| a | p.kind.hurdles());
 
@@ -52,23 +53,38 @@ pub fn compute_placements(packings_file: PathBuf) {
             pcf::BitBoard(0),
             &mut packing.clone(),
             &mut |placement, score, time, b2b| {
+                count.fetch_add(1, Ordering::Relaxed);
+
                 let order: [_; 15] = std::array::from_fn(|i| (placement[i].piece as usize).into());
                 let order = PackedPieceSeq::from(order);
 
                 let packed_placements = <[_; 15]>::try_from(placement).unwrap().map(|p| p.pack());
 
-                results.entry(order).or_default().add(Entry::new(
-                    score as u16,
-                    time as u16,
-                    b2b,
-                    packed_placements,
-                ));
+                // tsd-tetris pcs always differ in b2b
+                assert_ne!(score[0], score[1]);
 
-                count.fetch_add(1, Ordering::Relaxed);
+                let mut nob2b_entry = Entry::new(
+                    score[0] as u16,
+                    time as u16,
+                    matches!(b2b, B2bStatus::B2b),
+                    packed_placements,
+                );
+                nob2b_entry.mark_valid_nob2b();
+
+                let mut b2b_entry = Entry::new(
+                    score[1] as u16,
+                    time as u16,
+                    matches!(b2b, B2bStatus::B2b),
+                    packed_placements,
+                );
+                b2b_entry.mark_valid_b2b();
+
+                results_nob2b.entry(order).or_default().add(nob2b_entry);
+                results_b2b.entry(order).or_default().add(b2b_entry);
             },
+            [0; 2],
             0,
-            0,
-            false,
+            B2bStatus::Uncertain,
             0,
             true,
             only_t,
@@ -93,11 +109,25 @@ pub fn compute_placements(packings_file: PathBuf) {
     });
 
     println!();
-    println!("{} piece sequences", results.len());
+    println!("{} piece sequences", results_b2b.len());
     println!(
         "{} non-dominated solutions (x{:.2} amplification)",
-        results.values().map(|archive| archive.len()).sum::<usize>(),
-        results.values().map(|archive| archive.len()).sum::<usize>() as f64
+        results_b2b
+            .values()
+            .map(|archive| archive.len())
+            .sum::<usize>()
+            + results_nob2b
+                .values()
+                .map(|archive| archive.len())
+                .sum::<usize>(),
+        (results_b2b
+            .values()
+            .map(|archive| archive.len())
+            .sum::<usize>()
+            + results_nob2b
+                .values()
+                .map(|archive| archive.len())
+                .sum::<usize>()) as f64
             / progress.into_inner() as f64,
     );
     println!("took {:.2?}", t.elapsed());

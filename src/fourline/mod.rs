@@ -12,7 +12,7 @@ use structopt::StructOpt;
 use crate::archive::{Archive, Dominance};
 use crate::data::{Piece, Placement};
 use crate::parse_seq;
-use crate::placement_search::find_placement_sequences;
+use crate::placement_search::{find_placement_sequences, B2bStatus};
 
 use self::merge::MergedBatches;
 
@@ -121,10 +121,18 @@ fn generate_batches(start: usize, end: usize) {
                 &mut vec![],
                 pcf::BitBoard(0),
                 &mut combo.iter().map(|p| p.0).collect(),
-                &mut |order, score, time, b2b| add(&normal_db, order, score, time, b2b),
+                &mut |order, score, time, b2b| {
+                    add(
+                        &normal_db,
+                        order,
+                        score[0],
+                        time,
+                        matches!(b2b, B2bStatus::B2b),
+                    )
+                },
+                [0; 2],
                 0,
-                0,
-                false,
+                B2bStatus::NoB2b,
                 0,
                 false,
                 None,
@@ -134,10 +142,18 @@ fn generate_batches(start: usize, end: usize) {
                 &mut vec![],
                 pcf::BitBoard(0),
                 &mut combo.iter().map(|p| p.0).collect(),
-                &mut |order, score, time, b2b| add(&b2b_db, order, score, time, b2b),
+                &mut |order, score, time, b2b| {
+                    add(
+                        &b2b_db,
+                        order,
+                        score[1],
+                        time,
+                        matches!(b2b, B2bStatus::B2b),
+                    )
+                },
+                [0; 2],
                 0,
-                0,
-                true,
+                B2bStatus::B2b,
                 0,
                 false,
                 None,
@@ -213,32 +229,41 @@ fn build_db() {
         // write to DB
         let idx = compute_index(pieces);
         for _ in next_index..idx {
-            index.write_all(bytemuck::bytes_of(&IndexEntry::zeroed())).unwrap();
+            index
+                .write_all(bytemuck::bytes_of(&IndexEntry::zeroed()))
+                .unwrap();
         }
         if next_index / 282475 < (idx + 1) / 282475 {
             println!("{:.1}%", idx as f64 / 2824752.49);
         }
         next_index = idx + 1;
 
-        index.write_all(bytemuck::bytes_of(&IndexEntry {
-            index: next_data,
-            len: entries.len() as u32,
-        })).unwrap();
+        index
+            .write_all(bytemuck::bytes_of(&IndexEntry {
+                index: next_data,
+                len: entries.len() as u32,
+            }))
+            .unwrap();
 
         for entry in entries {
             data.write_all(bytemuck::bytes_of(&DataEntry {
                 score: entry.score,
                 time_and_flags: entry.time_and_flags,
-            })).unwrap();
-            solns.write_all(bytemuck::bytes_of(&entry.placements)).unwrap();
-            
+            }))
+            .unwrap();
+            solns
+                .write_all(bytemuck::bytes_of(&entry.placements))
+                .unwrap();
+
             next_data += 1;
         }
     }
     assert!(b2b.next().is_none());
 
     for _ in next_index..7usize.pow(10) {
-        index.write_all(bytemuck::bytes_of(&IndexEntry::zeroed())).unwrap();
+        index
+            .write_all(bytemuck::bytes_of(&IndexEntry::zeroed()))
+            .unwrap();
     }
 }
 

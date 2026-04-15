@@ -1,14 +1,21 @@
-use crate::data::*;
+use crate::{ArrayExt, data::*};
 use crate::pathfind::{pathfind, Input};
+
+#[derive(Copy, Clone, Debug)]
+pub enum B2bStatus {
+    Uncertain,
+    B2b,
+    NoB2b,
+}
 
 pub fn find_placement_sequences(
     current: &mut Vec<Placement>,
     board: pcf::BitBoard,
     remaining: &mut Vec<pcf::Placement>,
-    found: &mut impl FnMut(&[Placement], u32, u32, bool),
-    score: u32,
+    found: &mut impl FnMut(&[Placement], [u32; 2], u32, B2bStatus),
+    score: [u32; 2],
     time: u32,
-    b2b: bool,
+    b2b: B2bStatus,
     combo: u32,
     tsd_tetris_only: bool,
     only_t: Option<pcf::Placement>,
@@ -65,7 +72,7 @@ pub fn find_placement_sequences(
             new_board,
             remaining,
             found,
-            score + info.score,
+            score.azip(info.score, |a, b| a + b),
             time + info.time,
             info.b2b,
             info.combo,
@@ -84,7 +91,7 @@ pub fn find_placement_sequences(
 fn evaluate(
     board: Board,
     place: Placement,
-    b2b: bool,
+    b2b: B2bStatus,
     combo: u32,
     tsd_tetris_only: bool,
 ) -> Option<PlacementEvaluation> {
@@ -146,24 +153,32 @@ fn evaluate(
         return None;
     }
 
+    let base_score = movement_score + combo_score;
+    let b2b_score = line_clear_score(lines_cleared, perfect_clear, true, spin);
+    let nob2b_score = line_clear_score(lines_cleared, perfect_clear, false, spin);
+
+    let score = match b2b {
+        B2bStatus::Uncertain => [base_score + nob2b_score, base_score + b2b_score],
+        B2bStatus::B2b => [base_score + b2b_score; 2],
+        B2bStatus::NoB2b => [base_score + nob2b_score; 2],
+    };
+
     Some(PlacementEvaluation {
-        score: movement_score
-            + line_clear_score(lines_cleared, perfect_clear, b2b, spin)
-            + combo_score,
+        score,
         time: movements.len() as u32 + line_clear_delay(lines_cleared, perfect_clear) + SPAWN_DELAY,
         b2b: match (lines_cleared, spin) {
             (0, _) => b2b,
-            (4, _) => true,
-            (_, Spin::Nope) => false,
-            _ => true,
+            (4, _) => B2bStatus::B2b,
+            (_, Spin::Nope) => B2bStatus::NoB2b,
+            _ => B2bStatus::B2b,
         },
         combo,
     })
 }
 
 struct PlacementEvaluation {
-    score: u32,
+    score: [u32; 2],
     time: u32,
-    b2b: bool,
+    b2b: B2bStatus,
     combo: u32,
 }
