@@ -135,6 +135,8 @@ pub fn t_placement_may_tspin(piece: &Placement, hurdles: u8, placements: &[Place
         && !piece.kind.board().overlaps(top_row)
         // If there are hurdles, then the T must be in the row where the hurdle happens
         && (hurdles == 0 || piece.kind.y() as u32 == hurdles.trailing_zeros())
+        // If there are no hurdles, then the T must be in the bottom row
+        && (hurdles != 0 || piece.kind.y() == 0)
     {
         // check that at least one corner cell is filled by a piece which is not hurdled
         let corner_y = piece.kind.y() as usize + 2;
@@ -174,6 +176,8 @@ pub fn i_placement_may_tetris_pc(piece: &Placement, hurdles: u8) -> bool {
         && piece.kind.piece_srs()[0].rotation == Rotation::West
         // I must hurdle T-spin in order to perform tetris afterwards
         && piece.kind.hurdles() == hurdles
+        // If there are no hurdles, the T-spin is in the bottom rows, so the I must be in the top
+        && (hurdles != 0 || piece.kind.y() == 2)
 }
 
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
