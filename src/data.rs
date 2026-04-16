@@ -448,6 +448,20 @@ impl From<pcf::Piece> for Piece {
     }
 }
 
+impl From<Piece> for pcf::Piece {
+    fn from(p: Piece) -> Self {
+        match p {
+            Piece::I => pcf::Piece::I,
+            Piece::O => pcf::Piece::O,
+            Piece::T => pcf::Piece::T,
+            Piece::L => pcf::Piece::L,
+            Piece::J => pcf::Piece::J,
+            Piece::S => pcf::Piece::S,
+            Piece::Z => pcf::Piece::Z,
+        }
+    }
+}
+
 impl From<pcf::Rotation> for Rotation {
     fn from(r: pcf::Rotation) -> Self {
         match r {

@@ -10,6 +10,7 @@ mod sixline;
 mod sixline2;
 mod solve;
 mod twoline;
+mod bag_hold_seq;
 
 #[derive(StructOpt)]
 pub enum Command {

@@ -16,7 +16,7 @@ use crate::sixline2::PackedPieceSeq;
 pub fn compute_placements(packings_file: PathBuf) {
     let set = packings_file.file_stem().unwrap().to_str().unwrap();
     let set: PieceSet = parse_seq(set).unwrap().into_iter().collect();
-    let set = format!("{set}");
+    // let set = format!("{set}");
 
     let mut packings: Vec<[RawPlacement; 15]> =
         bytemuck::cast_vec(std::fs::read(packings_file).unwrap());
@@ -98,7 +98,7 @@ pub fn compute_placements(packings_file: PathBuf) {
         let d = t.elapsed();
         let eta = d.as_secs_f64() / prog as f64 * (packings.len() - prog as usize) as f64;
         print!(
-            "    {count} placement seqs found (x{:.2} amplification), eta {:3}:{:02}:{:02}\r",
+            "  {prog}  {count} placement seqs found (x{:.2} amplification), eta {:3}:{:02}:{:02}\r",
             count as f64 / prog as f64,
             (eta / 3600.0).round(),
             (eta / 60.0 % 60.0).round(),
