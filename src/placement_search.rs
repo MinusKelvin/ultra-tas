@@ -1,5 +1,5 @@
-use crate::{ArrayExt, data::*};
 use crate::pathfind::{pathfind, Input};
+use crate::{data::*, ArrayExt};
 
 #[derive(Copy, Clone, Debug)]
 pub enum B2bStatus {
@@ -33,10 +33,15 @@ pub fn find_placement_sequences(
 
         let new_board = board.combine(placement.board());
 
+        let clears = (0..6)
+            .filter(|&y| new_board.line_filled(y) && !board.line_filled(y))
+            .count();
+
+        if tsd_tetris_only && clears == 0 && !pcf::placeability::hard_drop_only(board, placement) {
+            continue;
+        }
+
         if only_t.is_some_and(|p| p == placement) {
-            let clears = (0..6)
-                .filter(|&y| new_board.line_filled(y) && !board.line_filled(y))
-                .count();
             if clears != 2 {
                 continue;
             }
