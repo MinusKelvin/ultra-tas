@@ -1,25 +1,29 @@
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use foldhash::HashMap;
-use pcf::PieceSet;
 use rand::prelude::*;
 
 use crate::archive::{Archive, Dominance};
-use crate::parse_seq;
 use crate::placement_search::{find_placement_sequences, B2bStatus};
 use crate::sixline2::packings::{i_placement_may_tetris_pc, t_placement_may_tspin, RawPlacement};
 use crate::sixline2::PackedPieceSeq;
 
 pub fn compute_placements(packings_file: PathBuf) {
-    let set = packings_file.file_stem().unwrap().to_str().unwrap();
-    let set: PieceSet = parse_seq(set).unwrap().into_iter().collect();
-    // let set = format!("{set}");
+    let mut packings = vec![];
+    for f in packings_file.read_dir().unwrap() {
+        let f = f.unwrap();
+        if f.file_type().unwrap().is_file() {
+            std::fs::File::open(f.path())
+                .unwrap()
+                .read_to_end(&mut packings)
+                .unwrap();
+        }
+    }
 
-    let mut packings: Vec<[RawPlacement; 15]> =
-        bytemuck::cast_vec(std::fs::read(packings_file).unwrap());
+    let mut packings: Vec<[RawPlacement; 15]> = bytemuck::cast_vec(packings);
     packings.shuffle(&mut rand::rngs::Xoshiro256PlusPlus::from_seed([
         0xef, 0xdb, 0xe1, 0xab, 0x15, 0xb8, 0x73, 0x60, 0xf1, 0xc7, 0x65, 0x81, 0xf6, 0xb4, 0x56,
         0x0e, 0x76, 0x4d, 0x88, 0x60, 0xb2, 0xe1, 0x7a, 0x3c, 0xae, 0x3a, 0xc6, 0x66, 0xbf, 0x99,
@@ -34,7 +38,7 @@ pub fn compute_placements(packings_file: PathBuf) {
     let mut results_nob2b = HashMap::<_, Archive<_>>::default();
     let mut results_b2b = HashMap::<_, Archive<_>>::default();
 
-    packings.iter().take(100).for_each(|&packing| {
+    packings.iter().take(1000).for_each(|&packing| {
         let packing: Vec<pcf::Placement> = packing.into_iter().map(From::from).collect();
         let hurdles = packing.iter().fold(0, |a, p| a | p.kind.hurdles());
 
