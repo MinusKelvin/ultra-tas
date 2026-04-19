@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
 use bytemuck::{Pod, Zeroable};
 use pcf::{BitBoard, Piece, PieceSet, Placement, Rotation};
@@ -27,9 +27,14 @@ pub fn gen_packings() {
     let packings: HashMap<_, _> = valid_sets
         .into_iter()
         .map(|set| {
-            let path = Path::new("6l-packings").join(format!("{set}.dat"));
-            let file = File::create(path).unwrap();
-            (set, Mutex::new(BufWriter::new(file)))
+            (
+                set,
+                LazyLock::new(move || {
+                    let path = Path::new("6l-packings").join(format!("{set}.dat"));
+                    let file = File::create(path).unwrap();
+                    Mutex::new(BufWriter::new(file))
+                }),
+            )
         })
         .collect();
 

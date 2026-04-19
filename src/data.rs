@@ -207,7 +207,7 @@ impl Placement {
             return true;
         }
         for (x, y) in self.cells() {
-            if unsafe { *b.0.get_unchecked(x as usize) } & 1 << y != 0 {
+            if unsafe { *b.0.get_unchecked(x as usize) } as usize & 1 << y != 0 {
                 return true;
             }
         }
